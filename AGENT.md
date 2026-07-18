@@ -14,8 +14,6 @@
   - [1.5 Capa de Nubes Públicas (AWS y Azure)](#15-capa-de-nubes-públicas-aws-y-azure)
   - [1.6 Capa de GitOps y Orquestación de Aplicaciones (ArgoCD)](#16-capa-de-gitops-y-orquestación-de-aplicaciones-argocd)
 - [2. Stack Tecnológico](#2-stack-tecnológico)
-- [3. Guía Paso a Paso de Implementación](#3-guía-paso-a-paso-de-implementación)
-  - [Paso 1: Estructurar el Repositorio (Monorepo)](#paso-1-estructurar-el-repositorio-monorepo)
 
 ---
 
@@ -97,6 +95,57 @@ ArgoCD es el **controlador GitOps** que garantiza que el estado del cluster coin
 
 ---
 
+## 3. Guía Paso a Paso de Implementación
+
+### Paso 1: Estructurar el Repositorio (Monorepo)
+El monorepo es la base de todo el proyecto, ya que concentra código, IaC y configuración GitOps.
+
+#### Estructura Final del Repositorio
+```
+gitops-multicloud/
+├── app/                          # Código del microservicio
+│   ├── main.py                   # Punto de entrada FastAPI
+│   ├── models/                   # Modelos de datos
+│   ├── sri-facturacion-service.py # Lógica de negocio
+│   ├── docs/                     # Documentación API
+│   └── tests/                    # Pruebas
+├── gitops/                       # Configuración GitOps (K8s + Kustomize)
+│   ├── bases/                    # Manifiestos base (comunes a todas las nubes)
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   ├── hpa.yaml
+│   │   └── kustomization.yaml
+│   └── overlays/                 # Sobrecargas específicas por nube
+│       ├── aws-eks/
+│       │   ├── ingress.yaml
+│       │   ├── secrets-store-ssm.yaml
+│       │   └── kustomization.yaml
+│       └── azure-aks/
+│           ├── ingress.yaml
+│           ├── secrets-store-csi.yaml
+│           └── kustomization.yaml
+├── iac/                          # Infraestructura como Código (Terraform)
+│   ├── modules/                  # Módulos Terraform reutilizables
+│   │   └── kubernetes-cluster/   # Módulo genérico para clusters K8s
+│   │       ├── main.tf
+│   │       ├── variables.tf
+│   │       └── outputs.tf
+│   ├── aws/                      # Implementación para AWS
+│   │   └── main.tf
+│   └── azure/                    # Implementación para Azure
+│       └── main.tf
+├── .github/                      # Workflows de GitHub Actions
+│   └── workflows/
+│       └── ci-cd.yaml
+├── Documentos/                   # Documentación académica (no tocar)
+├── Investigaciones-master/       # Recursos de investigación (no tocar)
+├── GITOPS.md                     # Memoria técnica principal (este archivo)
+├── README.md                     # README público del proyecto
+└── [otros archivos de documentación académica]
+```
+
+---
+
 ## 2. Stack Tecnológico
 
 | Capa | Tecnología | Versión | Justificación Académica/Industrial |
@@ -116,11 +165,6 @@ ArgoCD es el **controlador GitOps** que garantiza que el estado del cluster coin
 | Registro de Imágenes (Azure) | Azure ACR | - | Integrado con AKS y AAD |
 | Base de Datos | PostgreSQL | ≥ 15 | Motor relacional open source, compatible con ambas nubes |
 
----
 
-## 3. Guía Paso a Paso de Implementación
-
-### Paso 1: Estructurar el Repositorio (Monorepo)
-El monorepo es la base de todo el proyecto, ya que concentra código, IaC y configuración GitOps.
-
-#### Estructura Final del Repositorio
+```
+## Devops
