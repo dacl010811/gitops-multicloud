@@ -11,6 +11,10 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 
   # Estado remoto en Azure Storage.
@@ -25,6 +29,12 @@ terraform {
 
 provider "azurerm" {
   features {}
+}
+
+# El módulo kubernetes-cluster declara aws en required_providers (patrón multi-cloud).
+# Aunque aquí no se crea ningún recurso AWS (count = 0), el provider debe configurarse.
+provider "aws" {
+  region = "us-east-1"
 }
 
 # ============================================
