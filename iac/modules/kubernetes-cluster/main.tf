@@ -20,30 +20,32 @@ terraform {
 
 # ============================================
 # RECURSOS CONDICIONALES: AWS EKS
+# ============================================
 
-# Solucion para: "role       = aws_iam_role.eks_cluster[0].name"
-# resource "aws_iam_role_policy_attachment" "eks_cluster_policy"
+# IAM Role para el Control Plane de EKS (solo AWS)
+resource "aws_iam_role" "eks_cluster" {
+  count = var.cloud_provider == "aws" ? 1 : 0
+  name  = "${var.cluster_name}-eks-cluster-role"
 
-#resource "aws_iam_role" "eks_cluster" {
-#  count = var.cloud_provider == "aws" ? 1 : 0
-#  name  = "${var.cluster_name}-eks-cluster-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "eks.amazonaws.com" }
+    }]
+  })
 
-#  assume_role_policy = jsonencode({
-#    Version = "2012-10-17"
-#    Statement = [{
-#      Action    = "sts:AssumeRole"
-#      Effect    = "Allow"
-#      Principal = { Service = "eks.amazonaws.com" }
-#    }]
-#  })
-#}
+  tags = merge(var.tags, {
+    Name = "${var.cluster_name}-eks-cluster-role"
+  })
+}
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   count      = var.cloud_provider == "aws" ? 1 : 0
   role       = aws_iam_role.eks_cluster[0].name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
-# ============================================
 
 resource "aws_eks_cluster" "main" {
   count = var.cloud_provider == "aws" ? 1 : 0
