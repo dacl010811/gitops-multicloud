@@ -86,7 +86,8 @@ locals {
     users = [{
       name = var.cluster_name
       user = {
-        token = azurerm_kubernetes_cluster.main[0].kube_config[0].token
+        client-certificate-data = azurerm_kubernetes_cluster.main[0].kube_config[0].client_certificate
+        client-key-data         = azurerm_kubernetes_cluster.main[0].kube_config[0].client_key
       }
     }]
   }) : null
