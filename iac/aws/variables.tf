@@ -1,0 +1,50 @@
+# ============================================
+# Variables: Root Module AWS EKS
+# ============================================
+
+variable "region" {
+  description = "Región de AWS donde se desplegará el clúster EKS"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "cluster_name" {
+  description = "Nombre del clúster EKS"
+  type        = string
+  default     = "sri-eks-cluster"
+}
+
+variable "kubernetes_version" {
+  description = "Versión de Kubernetes"
+  type        = string
+  default     = "1.30"
+}
+
+variable "environment" {
+  description = "Ambiente (dev, staging, production)"
+  type        = string
+  default     = "production"
+}
+
+variable "node_count" {
+  description = "Número de nodos workers (desired/min)"
+  type        = number
+  default     = 3
+}
+
+variable "node_instance_type" {
+  description = "Tipo de instancia EC2 para los nodos workers"
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "tags" {
+  description = "Tags comunes para todos los recursos"
+  type        = map(string)
+  default = {
+    Project     = "SRI-GitOps-Multicloud"
+    ManagedBy   = "Terraform"
+    Environment = "production"
+    Cloud       = "aws"
+  }
+}
