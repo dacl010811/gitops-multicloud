@@ -33,10 +33,17 @@ provider "aws" {
 }
 
 # El módulo kubernetes-cluster declara azurerm en required_providers (patrón multi-cloud).
-# Aunque aquí no se crea ningún recurso Azure (count = 0), el provider debe configurarse.
+# Aunque aquí no se crea ningún recurso Azure (count = 0), Terraform configura el provider
+# al ver los bloques azurerm_* del módulo. Se usan credenciales placeholder con auth por
+# client-secret para evitar que azurerm invoque Azure CLI. NUNCA se usan (no hay recursos Azure).
 provider "azurerm" {
   features {}
   skip_provider_registration = true
+
+  subscription_id = "00000000-0000-0000-0000-000000000000"
+  tenant_id       = "00000000-0000-0000-0000-000000000000"
+  client_id       = "00000000-0000-0000-0000-000000000000"
+  client_secret   = "placeholder-no-usado-en-despliegue-aws"
 }
 
 # ============================================
