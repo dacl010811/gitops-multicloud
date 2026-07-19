@@ -1,0 +1,65 @@
+# ============================================
+# Valores para kube-prometheus-stack (Prometheus + Grafana + Alertmanager)
+# Observabilidad unificada, común a ambos clusters (EKS y AKS)
+# ============================================
+
+fullnameOverride: sri-monitoring
+
+# ----- Prometheus -----
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # Descubre ServiceMonitors de todos los namespaces sin filtrar por label
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+# ----- Grafana -----
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: true
+  # La contraseña admin debe inyectarse vía Secret (no en texto plano)
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  service:
+    type: ClusterIP
+
+# ----- Alertmanager -----
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+# ----- Exporters de nodo/kubelet (métricas del cluster) -----
+nodeExporter:
+  enabled: true
+kubeStateMetrics:
+  enabled: true
