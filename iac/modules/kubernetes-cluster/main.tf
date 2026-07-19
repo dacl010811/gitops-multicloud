@@ -63,6 +63,21 @@ resource "aws_eks_cluster" "main" {
   })
 }
 
+# Regla de acceso al API server de EKS (443) desde CIDRs autorizados.
+# Formaliza en Terraform lo que antes se añadía a mano al Security Group del
+# clúster; necesario para que kubectl alcance el endpoint privado desde
+# instancias dentro de la VPC. for_each vacío => no se crea ninguna regla.
+resource "aws_vpc_security_group_ingress_rule" "eks_api" {
+  for_each = var.cloud_provider == "aws" ? toset(var.api_access_cidrs) : toset([])
+
+  security_group_id = aws_eks_cluster.main[0].vpc_config[0].cluster_security_group_id
+  cidr_ipv4         = each.value
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description        = "Acceso HTTPS al API server de EKS (kubectl) desde ${each.value}"
+}
+
 # ============================================
 # Nota: los recursos de Azure AKS viven en un módulo independiente
 # (iac/modules/kubernetes-cluster/azure) usado por el root iac/azure.

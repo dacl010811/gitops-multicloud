@@ -62,6 +62,10 @@ module "eks" {
   cluster_role_arn   = var.cluster_role_arn
   environment        = var.environment
   tags               = var.tags
+
+  # CIDRs con acceso al API server (kubectl). Por defecto, el CIDR de la VPC
+  # por defecto (donde vive la EC2 de ejecución); sobreescribible por variable.
+  api_access_cidrs = length(var.api_access_cidrs) > 0 ? var.api_access_cidrs : [data.aws_vpc.default.cidr_block]
 }
 
 # ============================================

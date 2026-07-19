@@ -50,6 +50,12 @@ variable "node_role_arn" {
   default     = ""
 }
 
+variable "api_access_cidrs" {
+  description = "CIDRs autorizados a alcanzar el API server de EKS (kubectl) vía el Security Group del clúster. Vacío = usar automáticamente el CIDR de la VPC por defecto."
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Tags comunes para todos los recursos"
   type        = map(string)
