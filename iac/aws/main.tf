@@ -11,10 +11,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
   }
 
   # Estado remoto en S3 con locking en DynamoDB.
@@ -30,13 +26,6 @@ terraform {
 
 provider "aws" {
   region = var.region
-}
-
-# El módulo kubernetes-cluster requiere azurerm (patrón multi-cloud), pero los recursos Azure
-# están aislados en un submódulo llamado con count = 0 cuando cloud_provider = "aws".
-# Por eso azurerm NO se configura ni autentica aquí; el bloque solo debe existir.
-provider "azurerm" {
-  features {}
 }
 
 # ============================================

@@ -11,10 +11,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
   }
 }
 
@@ -68,20 +64,8 @@ resource "aws_eks_cluster" "main" {
 }
 
 # ============================================
-# RECURSOS CONDICIONALES: Azure AKS
-# Aislados en un submódulo llamado con count para que el provider azurerm
-# NO se configure (ni autentique) cuando cloud_provider != "azure".
+# Nota: los recursos de Azure AKS viven en un módulo independiente
+# (iac/modules/kubernetes-cluster/azure) usado por el root iac/azure.
+# Este módulo es específico de AWS EKS para NO arrastrar el provider azurerm
+# al grafo del root AWS (evita que azurerm intente autenticarse).
 # ============================================
-
-module "azure" {
-  count  = var.cloud_provider == "azure" ? 1 : 0
-  source = "./azure"
-
-  cluster_name        = var.cluster_name
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  kubernetes_version  = var.kubernetes_version
-  node_count          = var.node_count
-  node_instance_type  = var.node_instance_type
-  tags                = var.tags
-}

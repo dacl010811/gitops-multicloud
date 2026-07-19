@@ -1,5 +1,5 @@
 # ============================================
-# Outputs Estandarizados del Módulo
+# Outputs del Módulo EKS (AWS)
 # ============================================
 
 output "cluster_name" {
@@ -19,29 +19,25 @@ output "kubernetes_version" {
 
 output "endpoint" {
   description = "Endpoint de la API de Kubernetes"
-  value       = var.cloud_provider == "aws" ? aws_eks_cluster.main[0].endpoint : module.azure[0].host
+  value       = aws_eks_cluster.main[0].endpoint
 }
 
 output "cluster_ca_certificate" {
   description = "Certificado CA del clúster (base64)"
-  value       = var.cloud_provider == "aws" ? aws_eks_cluster.main[0].certificate_authority[0].data : module.azure[0].cluster_ca_certificate
+  value       = aws_eks_cluster.main[0].certificate_authority[0].data
   sensitive   = true
 }
 
 output "kubeconfig" {
   description = "Kubeconfig completo para conectarse al clúster"
-  value       = var.cloud_provider == "aws" ? local.kubeconfig_aws : local.kubeconfig_azure
   sensitive   = true
-}
-
-locals {
-  kubeconfig_aws = var.cloud_provider == "aws" ? yamlencode({
+  value = yamlencode({
     apiVersion = "v1"
     kind       = "Config"
     clusters = [{
       name = var.cluster_name
       cluster = {
-        server                   = aws_eks_cluster.main[0].endpoint
+        server                     = aws_eks_cluster.main[0].endpoint
         certificate-authority-data = aws_eks_cluster.main[0].certificate_authority[0].data
       }
     }]
@@ -63,32 +59,5 @@ locals {
         }
       }
     }]
-  }) : null
-
-  kubeconfig_azure = var.cloud_provider == "azure" ? yamlencode({
-    apiVersion = "v1"
-    kind       = "Config"
-    clusters = [{
-      name = var.cluster_name
-      cluster = {
-        server                   = module.azure[0].host
-        certificate-authority-data = module.azure[0].cluster_ca_certificate
-      }
-    }]
-    contexts = [{
-      name = var.cluster_name
-      context = {
-        cluster = var.cluster_name
-        user    = var.cluster_name
-      }
-    }]
-    current-context = var.cluster_name
-    users = [{
-      name = var.cluster_name
-      user = {
-        client-certificate-data = module.azure[0].client_certificate
-        client-key-data         = module.azure[0].client_key
-      }
-    }]
-  }) : null
+  })
 }
