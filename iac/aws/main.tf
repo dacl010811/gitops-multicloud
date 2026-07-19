@@ -40,6 +40,13 @@ data "aws_subnets" "default" {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
+
+  # EKS no soporta control plane en us-east-1e. Restringimos a las AZ soportadas
+  # para evitar UnsupportedAvailabilityZoneException.
+  filter {
+    name   = "availability-zone"
+    values = ["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d", "us-east-1f"]
+  }
 }
 
 # ============================================
