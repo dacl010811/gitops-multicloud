@@ -38,6 +38,18 @@ variable "node_instance_type" {
   default     = "t3.medium"
 }
 
+variable "cluster_role_arn" {
+  description = "ARN de un rol IAM existente para el control plane de EKS. Vacío = crearlo. En AWS Academy usar el ARN de LabRole."
+  type        = string
+  default     = ""
+}
+
+variable "node_role_arn" {
+  description = "ARN de un rol IAM existente para los nodos workers. Vacío = crearlo. En AWS Academy usar el ARN de LabRole."
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags comunes para todos los recursos"
   type        = map(string)

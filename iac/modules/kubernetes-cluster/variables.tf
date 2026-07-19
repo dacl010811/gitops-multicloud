@@ -66,6 +66,12 @@ variable "subnet_ids" {
   default     = []
 }
 
+variable "cluster_role_arn" {
+  description = "ARN de un rol IAM existente para el control plane de EKS. Si se deja vacío, el módulo crea el rol. Útil en entornos con IAM restringido (p.ej. AWS Academy LabRole)."
+  type        = string
+  default     = ""
+}
+
 # ============================================
 # Variables específicas de Azure AKS
 # ============================================

@@ -22,9 +22,9 @@ terraform {
 # RECURSOS CONDICIONALES: AWS EKS
 # ============================================
 
-# IAM Role para el Control Plane de EKS (solo AWS)
+# IAM Role para el Control Plane de EKS (solo AWS y si no se pasa un ARN existente)
 resource "aws_iam_role" "eks_cluster" {
-  count = var.cloud_provider == "aws" ? 1 : 0
+  count = var.cloud_provider == "aws" && var.cluster_role_arn == "" ? 1 : 0
   name  = "${var.cluster_name}-eks-cluster-role"
 
   assume_role_policy = jsonencode({
@@ -42,7 +42,7 @@ resource "aws_iam_role" "eks_cluster" {
 }
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
-  count      = var.cloud_provider == "aws" ? 1 : 0
+  count      = var.cloud_provider == "aws" && var.cluster_role_arn == "" ? 1 : 0
   role       = aws_iam_role.eks_cluster[0].name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
@@ -51,7 +51,7 @@ resource "aws_eks_cluster" "main" {
   count = var.cloud_provider == "aws" ? 1 : 0
   
   name     = var.cluster_name
-  role_arn = aws_iam_role.eks_cluster[0].arn
+  role_arn = var.cluster_role_arn != "" ? var.cluster_role_arn : aws_iam_role.eks_cluster[0].arn
   version  = var.kubernetes_version
   
   vpc_config {
