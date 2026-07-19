@@ -1,0 +1,25 @@
+# ============================================
+# Plantilla de variables para iac/aws
+# ============================================
+# IMPORTANTE: terraform.tfvars está en .gitignore (*.tfvars), por lo que NO se
+# versiona ni se sincroniza a la EC2 vía git. En la máquina donde ejecutes
+# Terraform (p.ej. la EC2 de AWS Academy) debes crear el archivo real:
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# ============================================
+# AWS Academy / Learner Lab
+# ============================================
+# El rol voclabs NO permite iam:CreateRole. LabRole es el único rol utilizable
+# y sirve tanto para el control plane de EKS como para los nodos workers.
+# Al definir estos ARN, el módulo reutiliza el rol existente en lugar de crearlo.
+
+cluster_role_arn = "arn:aws:iam::941980599661:role/LabRole"
+node_role_arn    = "arn:aws:iam::941980599661:role/LabRole"
+
+# Otras variables (opcionales; tienen defaults en variables.tf):
+# region             = "us-east-1"
+# cluster_name       = "sri-eks-cluster"
+# kubernetes_version = "1.30"
+# node_count         = 3
+# node_instance_type = "t3.medium"

@@ -11,10 +11,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
   }
 }
 
@@ -67,30 +63,24 @@ resource "aws_eks_cluster" "main" {
   })
 }
 
-# ============================================
-# RECURSOS CONDICIONALES: Azure AKS
-# ============================================
+# Regla de acceso al API server de EKS (443) desde CIDRs autorizados.
+# Formaliza en Terraform lo que antes se añadía a mano al Security Group del
+# clúster; necesario para que kubectl alcance el endpoint privado desde
+# instancias dentro de la VPC. for_each vacío => no se crea ninguna regla.
+resource "aws_vpc_security_group_ingress_rule" "eks_api" {
+  for_each = var.cloud_provider == "aws" ? toset(var.api_access_cidrs) : toset([])
 
-resource "azurerm_kubernetes_cluster" "main" {
-  count = var.cloud_provider == "azure" ? 1 : 0
-  
-  name                = var.cluster_name
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  dns_prefix          = var.cluster_name
-  kubernetes_version  = var.kubernetes_version
-  
-  default_node_pool {
-    name       = "default"
-    node_count = var.node_count
-    vm_size    = var.node_instance_type
-  }
-  
-  identity {
-    type = "SystemAssigned"
-  }
-  
-  tags = merge(var.tags, {
-    Name = "${var.cluster_name}-aks"
-  })
+  security_group_id = aws_eks_cluster.main[0].vpc_config[0].cluster_security_group_id
+  cidr_ipv4         = each.value
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  description        = "Acceso HTTPS al API server de EKS (kubectl) desde ${each.value}"
 }
+
+# ============================================
+# Nota: los recursos de Azure AKS viven en un módulo independiente
+# (iac/modules/kubernetes-cluster/azure) usado por el root iac/azure.
+# Este módulo es específico de AWS EKS para NO arrastrar el provider azurerm
+# al grafo del root AWS (evita que azurerm intente autenticarse).
+# ============================================

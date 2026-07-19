@@ -72,6 +72,12 @@ variable "cluster_role_arn" {
   default     = ""
 }
 
+variable "api_access_cidrs" {
+  description = "CIDRs autorizados a alcanzar el API server de EKS (443) vía el Security Group del clúster. Vacío = no se añaden reglas extra."
+  type        = list(string)
+  default     = []
+}
+
 # ============================================
 # Variables específicas de Azure AKS
 # ============================================

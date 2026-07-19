@@ -11,10 +11,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
   }
 
   # Estado remoto en S3 con locking en DynamoDB.
@@ -32,20 +28,6 @@ provider "aws" {
   region = var.region
 }
 
-# El módulo kubernetes-cluster declara azurerm en required_providers (patrón multi-cloud).
-# Aunque aquí no se crea ningún recurso Azure (count = 0), Terraform configura el provider
-# al ver los bloques azurerm_* del módulo. Se usan credenciales placeholder con auth por
-# client-secret para evitar que azurerm invoque Azure CLI. NUNCA se usan (no hay recursos Azure).
-provider "azurerm" {
-  features {}
-  skip_provider_registration = true
-
-  subscription_id = "00000000-0000-0000-0000-000000000000"
-  tenant_id       = "00000000-0000-0000-0000-000000000000"
-  client_id       = "00000000-0000-0000-0000-000000000000"
-  client_secret   = "placeholder-no-usado-en-despliegue-aws"
-}
-
 # ============================================
 # Red: usa la VPC por defecto para simplificar el bootstrap
 # ============================================
@@ -57,6 +39,13 @@ data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
+  }
+
+  # EKS no soporta control plane en us-east-1e. Restringimos a las AZ soportadas
+  # para evitar UnsupportedAvailabilityZoneException.
+  filter {
+    name   = "availability-zone"
+    values = ["us-east-1a", "us-east-1b", "us-east-1c", "us-east-1d", "us-east-1f"]
   }
 }
 
@@ -73,6 +62,10 @@ module "eks" {
   cluster_role_arn   = var.cluster_role_arn
   environment        = var.environment
   tags               = var.tags
+
+  # CIDRs con acceso al API server (kubectl). Por defecto, el CIDR de la VPC
+  # por defecto (donde vive la EC2 de ejecución); sobreescribible por variable.
+  api_access_cidrs = length(var.api_access_cidrs) > 0 ? var.api_access_cidrs : [data.aws_vpc.default.cidr_block]
 }
 
 # ============================================

@@ -9,7 +9,7 @@ output "cluster_name" {
 
 output "cloud_provider" {
   description = "Proveedor cloud"
-  value       = module.aks.cloud_provider
+  value       = "azure"
 }
 
 output "cluster_endpoint" {
