@@ -32,9 +32,9 @@ Sistema de facturación electrónica multi-cloud (AWS + Azure) implementado con 
 
 ## 👥 Equipo
 
-- **Lead Infrastructure:** [Nombre]
-- **Lead DevOps:** [Nombre]
-- **Lead Platform:** [Nombre]
+- **Lead Infrastructure:** Darwin Calle
+- **Lead DevOps:** Darwin Calle
+- **Lead Platform:** Darwin Calle
 
 ## 📄 Licencia
 
