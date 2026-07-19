@@ -37,7 +37,6 @@ provider "aws" {
 # Por eso azurerm NO se configura ni autentica aquí; el bloque solo debe existir.
 provider "azurerm" {
   features {}
-  skip_provider_registration = true
 }
 
 # ============================================
