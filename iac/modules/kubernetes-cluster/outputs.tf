@@ -19,12 +19,12 @@ output "kubernetes_version" {
 
 output "endpoint" {
   description = "Endpoint de la API de Kubernetes"
-  value       = var.cloud_provider == "aws" ? aws_eks_cluster.main[0].endpoint : azurerm_kubernetes_cluster.main[0].kube_config[0].host
+  value       = var.cloud_provider == "aws" ? aws_eks_cluster.main[0].endpoint : module.azure[0].host
 }
 
 output "cluster_ca_certificate" {
   description = "Certificado CA del clúster (base64)"
-  value       = var.cloud_provider == "aws" ? aws_eks_cluster.main[0].certificate_authority[0].data : azurerm_kubernetes_cluster.main[0].kube_config[0].cluster_ca_certificate
+  value       = var.cloud_provider == "aws" ? aws_eks_cluster.main[0].certificate_authority[0].data : module.azure[0].cluster_ca_certificate
   sensitive   = true
 }
 
@@ -71,8 +71,8 @@ locals {
     clusters = [{
       name = var.cluster_name
       cluster = {
-        server                   = azurerm_kubernetes_cluster.main[0].kube_config[0].host
-        certificate-authority-data = azurerm_kubernetes_cluster.main[0].kube_config[0].cluster_ca_certificate
+        server                   = module.azure[0].host
+        certificate-authority-data = module.azure[0].cluster_ca_certificate
       }
     }]
     contexts = [{
@@ -86,8 +86,8 @@ locals {
     users = [{
       name = var.cluster_name
       user = {
-        client-certificate-data = azurerm_kubernetes_cluster.main[0].kube_config[0].client_certificate
-        client-key-data         = azurerm_kubernetes_cluster.main[0].kube_config[0].client_key
+        client-certificate-data = module.azure[0].client_certificate
+        client-key-data         = module.azure[0].client_key
       }
     }]
   }) : null

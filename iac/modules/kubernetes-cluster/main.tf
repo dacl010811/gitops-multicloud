@@ -69,28 +69,19 @@ resource "aws_eks_cluster" "main" {
 
 # ============================================
 # RECURSOS CONDICIONALES: Azure AKS
+# Aislados en un submódulo llamado con count para que el provider azurerm
+# NO se configure (ni autentique) cuando cloud_provider != "azure".
 # ============================================
 
-resource "azurerm_kubernetes_cluster" "main" {
-  count = var.cloud_provider == "azure" ? 1 : 0
-  
-  name                = var.cluster_name
+module "azure" {
+  count  = var.cloud_provider == "azure" ? 1 : 0
+  source = "./azure"
+
+  cluster_name        = var.cluster_name
   location            = var.location
   resource_group_name = var.resource_group_name
-  dns_prefix          = var.cluster_name
   kubernetes_version  = var.kubernetes_version
-  
-  default_node_pool {
-    name       = "default"
-    node_count = var.node_count
-    vm_size    = var.node_instance_type
-  }
-  
-  identity {
-    type = "SystemAssigned"
-  }
-  
-  tags = merge(var.tags, {
-    Name = "${var.cluster_name}-aks"
-  })
+  node_count          = var.node_count
+  node_instance_type  = var.node_instance_type
+  tags                = var.tags
 }
