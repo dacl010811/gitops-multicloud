@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sri-facturacion-aws-eks
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    cloud: aws-eks
+spec:
+  project: sri-facturacion
+  source:
+    repoURL: https://github.com/dacl010811/gitops-multicloud.git
+    targetRevision: main
+    path: gitops/overlays/aws-eks
+  destination:
+    # ArgoCD desplegado en el propio cluster EKS
+    server: https://kubernetes.default.svc
+    namespace: sri-facturacion
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  # El HPA gestiona las réplicas en runtime: se ignora el diff del campo replicas
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

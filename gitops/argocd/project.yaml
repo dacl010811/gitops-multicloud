@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: sri-facturacion
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: Proyecto GitOps del microservicio SRI Facturación (multi-cloud EKS/AKS)
+  sourceRepos:
+    - https://github.com/dacl010811/gitops-multicloud.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: sri-facturacion
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  orphanedResources:
+    warn: true
