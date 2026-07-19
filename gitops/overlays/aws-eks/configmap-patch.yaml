@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sri-facturacion-config
+data:
+  CLOUD_PROVIDER: "aws"
+  CLUSTER_NAME: "sri-eks-cluster"
+  CLOUD_REGION: "us-east-1"
+  ENVIRONMENT: "production"

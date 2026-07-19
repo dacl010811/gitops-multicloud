@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: sri-facturacion-base
+
+commonLabels:
+  app.kubernetes.io/name: sri-facturacion-service
+  app.kubernetes.io/part-of: sri-gitops-multicloud
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  - hpa.yaml

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sri-facturacion-service-deployment
+  labels:
+    app: sri-facturacion-service-deployment
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: sri-facturacion-service-deployment
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: sri-facturacion-service-deployment
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: sri-facturacion-service-deployment
+          image: ghcr.io/tu-usuario/sri-facturacion-service:latest
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: sri-facturacion-config
+                  key: environment
+            - name: CLOUD_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: sri-facturacion-config
+                  key: cloud_provider
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3

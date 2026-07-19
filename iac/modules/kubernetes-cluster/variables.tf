@@ -56,6 +56,32 @@ variable "node_instance_type" {
   default     = "default"
 }
 
+# ============================================
+# Variables específicas de AWS EKS
+# ============================================
+
+variable "subnet_ids" {
+  description = "Lista de IDs de subredes donde se desplegará el clúster EKS (requerido para cloud_provider = 'aws')"
+  type        = list(string)
+  default     = []
+}
+
+# ============================================
+# Variables específicas de Azure AKS
+# ============================================
+
+variable "location" {
+  description = "Región de Azure donde se desplegará el clúster AKS (requerido para cloud_provider = 'azure')"
+  type        = string
+  default     = ""
+}
+
+variable "resource_group_name" {
+  description = "Nombre del Resource Group de Azure para el clúster AKS (requerido para cloud_provider = 'azure')"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags comunes para todos los recursos"
   type        = map(string)

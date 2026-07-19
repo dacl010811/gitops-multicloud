@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: sri-facturacion-aws-eks
+
+namespace: sri-facturacion
+
+resources:
+  - ../../bases
+  - ingress.yaml
+  - secrets-store-ssm.yaml
+
+# Sobrescribe el ConfigMap base con los valores específicos de AWS EKS
+patches:
+  - path: configmap-patch.yaml
+    target:
+      kind: ConfigMap
+      name: sri-facturacion-config
+  # Monta los secretos de AWS Secrets Manager vía CSI Driver
+  - path: deployment-secrets-patch.yaml
+    target:
+      kind: Deployment
+      name: sri-facturacion-service
+
+# Imagen desde Amazon ECR
+images:
+  - name: sri-facturacion-service
+    newName: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
+    newTag: "1.0.0"
+
+commonLabels:
+  cloud: aws-eks

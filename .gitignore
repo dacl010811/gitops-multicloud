@@ -27,6 +27,7 @@ htmlcov/
 .venv/
 venv/
 ENV/
+.qoder/
 
 # FastAPI / Uvicorn
 *.log

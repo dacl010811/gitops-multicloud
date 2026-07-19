@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sri-facturacion-ingress
+  annotations:
+    # Application Gateway Ingress Controller (AGIC) - Ingress de capa 7
+    appgw.ingress.kubernetes.io/backend-protocol: http
+    appgw.ingress.kubernetes.io/health-probe-path: /health
+    appgw.ingress.kubernetes.io/request-timeout: "30"
+spec:
+  ingressClassName: azure-application-gateway
+  rules:
+    - host: api.sri.ec.gob.ec
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sri-facturacion-service
+                port:
+                  name: http

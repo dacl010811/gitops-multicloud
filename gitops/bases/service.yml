@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sri-facturacion-service-svc
+  labels:
+    app: sri-facturacion-service-deployment
+spec:
+  type: ClusterIP
+  selector:
+    app: sri-facturacion-service-deployment
+  ports:
+    - port: 80
+      targetPort: 5000
+      protocol: TCP
+      name: http

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sri-facturacion-config
+data:
+  CLOUD_PROVIDER: "azure"
+  CLUSTER_NAME: "sri-aks-cluster"
+  CLOUD_REGION: "eastus"
+  ENVIRONMENT: "production"
