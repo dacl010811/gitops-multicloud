@@ -4,7 +4,10 @@
 
 output "cluster_name" {
   description = "Nombre del clúster Kubernetes"
-  value       = var.cluster_name
+  # Apunta al atributo real del recurso (no a var.cluster_name) para crear una
+  # dependencia efectiva: el node group que consume este output se destruye
+  # antes que el clúster y se evita ResourceInUseException (409).
+  value       = one(aws_eks_cluster.main[*].name)
 }
 
 output "cloud_provider" {
