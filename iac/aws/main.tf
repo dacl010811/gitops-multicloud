@@ -13,14 +13,14 @@ terraform {
     }
   }
 
-  # Estado remoto en S3 con locking en DynamoDB.
-  # Reemplazar bucket y dynamodb_table por los recursos reales antes de 'init'.
+  # Estado remoto en S3 con locking nativo (use_lockfile).
+  # Requiere Terraform >= 1.10. El bucket debe existir antes de 'init'.
   backend "s3" {
-    bucket         = "sri-gitops-tfstate"
-    key            = "aws/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "sri-gitops-tflock"
-    encrypt        = true
+    bucket      = "sri-gitops-tfstate"
+    key         = "aws/terraform.tfstate"
+    region      = "us-east-1"
+    encrypt     = true
+    use_lockfile = true
   }
 }
 
