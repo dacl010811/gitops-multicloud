@@ -15,6 +15,9 @@ output "cloud_provider" {
 output "cluster_endpoint" {
   description = "Endpoint de la API de Kubernetes"
   value       = module.aks.endpoint
+  # El endpoint AKS proviene de kube_config[0].host (bloque sensitive del
+  # módulo hijo); Terraform exige propagar la marca hasta el output raíz.
+  sensitive   = true
 }
 
 output "kubeconfig" {

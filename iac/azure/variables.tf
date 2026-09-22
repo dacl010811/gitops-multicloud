@@ -23,7 +23,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Versión de Kubernetes"
   type        = string
-  default     = "1.30"
+  default     = "1.37"
 }
 
 variable "environment" {
@@ -39,9 +39,9 @@ variable "node_count" {
 }
 
 variable "node_instance_type" {
-  description = "Tamaño de VM para los nodos del clúster AKS"
+  description = "Tamaño de VM para los nodos del clúster AKS. Standard_DS2_v2 (generación retirada) ya no está permitido en suscripciones nuevas de eastus; D2s_v3 es el default clásico de AKS (2 vCPU / 8 GB)."
   type        = string
-  default     = "Standard_DS2_v2"
+  default     = "Standard_D2s_v3"
 }
 
 variable "tags" {

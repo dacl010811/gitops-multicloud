@@ -12,8 +12,10 @@
 set -euo pipefail
 
 # ----- Valores alineados con iac/azure/main.tf (backend "azurerm") -----
+# El nombre del Storage Account es único GLOBALMENTE: "sritfstate" estaba
+# tomado, se usa "sritfstate23c5" (sufijo del subscription id para unicidad).
 RESOURCE_GROUP="${TF_STATE_RG:-sri-tfstate-rg}"
-STORAGE_ACCOUNT="${TF_STATE_SA:-sritfstate}"
+STORAGE_ACCOUNT="${TF_STATE_SA:-sritfstate23c5}"
 CONTAINER="${TF_STATE_CONTAINER:-tfstate}"
 LOCATION="${AZURE_LOCATION:-eastus}"
 
@@ -43,17 +45,31 @@ else
 fi
 
 # ----- 3. Container para el estado -----
+# auth-mode key: obtiene la access key del Storage Account vía management plane
+# (suficiente con rol Contributor); evita el error AuthorizationPermissionMismatch
+# que da --auth-mode login cuando la identidad no tiene rol de data-plane
+# (Storage Blob Data Contributor).
 echo "[+] Creando/asegurando el container ${CONTAINER}..."
 az storage container create \
   --name "${CONTAINER}" \
   --account-name "${STORAGE_ACCOUNT}" \
-  --auth-mode login \
+  --auth-mode key \
   --output none
+
+# ----- 4. Resource Providers esenciales para AKS (idempotente) -----
+# Terraform también los registra automáticamente en su primer plan; este
+# paso los pre-registra con 4 llamadas (vs ~30 del auto-registro) para
+# reducir la ventana de timeouts del ISP. az provider register es seguro
+# de repetir: devuelve al instante si ya está registrado/registrándose.
+for PROVIDER in Microsoft.ContainerService Microsoft.Compute Microsoft.Network Microsoft.ManagedIdentity; do
+  echo "[+] Registrando Resource Provider ${PROVIDER}..."
+  az provider register --namespace "${PROVIDER}" --output none
+done
 
 echo
 echo ">> Backend Azure listo. Ahora puedes ejecutar:"
 echo "   cd iac/azure && terraform init && terraform plan"
 echo
-echo ">> Nota: si 'sritfstate' ya está tomado globalmente, exporta uno único:"
-echo "   TF_STATE_SA=sritfstate\$RANDOM bash scripts/bootstrap-backend-azure.sh"
+echo ">> Nota: si el Storage Account por defecto está tomado globalmente, exporta uno único:"
+echo "   TF_STATE_SA=<nuevo-nombre> bash scripts/bootstrap-backend-azure.sh"
 echo "   y actualiza storage_account_name en iac/azure/main.tf."

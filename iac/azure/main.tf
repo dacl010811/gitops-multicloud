@@ -14,10 +14,11 @@ terraform {
   }
 
   # Estado remoto en Azure Storage.
-  # Reemplazar resource_group_name y storage_account_name por los recursos reales antes de 'init'.
+  # storage_account_name es único GLOBALMENTE en Azure: sritfstate ya estaba
+  # tomado, se usa sritfstate23c5 (sufijo del subscription id para unicidad).
   backend "azurerm" {
     resource_group_name  = "sri-tfstate-rg"
-    storage_account_name = "sritfstate"
+    storage_account_name = "sritfstate23c5"
     container_name       = "tfstate"
     key                  = "azure/terraform.tfstate"
   }
@@ -25,6 +26,12 @@ terraform {
 
 provider "azurerm" {
   features {}
+
+  # Registro AUTOMÁTICO de resource providers (default). Con red estable,
+  # Terraform registra solo lo necesario en el primer plan y los providers
+  # quedan persistidos en la suscripción (una sola vez en su vida).
+  # Fallback ante timeouts del ISP: scripts/bootstrap-backend-azure.sh
+  # también pre-registra los 4 providers esenciales (paso idempotente).
 }
 
 # ============================================
