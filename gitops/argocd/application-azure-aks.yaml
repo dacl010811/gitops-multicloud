@@ -11,7 +11,9 @@ spec:
   project: sri-facturacion
   source:
     repoURL: https://github.com/dacl010811/gitops-multicloud.git
-    targetRevision: main
+    # Rama de trabajo con los manifiestos validados; main queda para el
+    # estado final del TFM (al mergear, volver a 'main').
+    targetRevision: feature-patron-appOfapps
     path: gitops/overlays/azure-aks
   destination:
     # ArgoCD desplegado en el propio cluster AKS

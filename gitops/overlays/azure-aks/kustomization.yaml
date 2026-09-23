@@ -9,7 +9,9 @@ namespace: sri-facturacion
 resources:
   - ../../bases
   - ingress.yaml
-  - secrets-store-csi.yaml
+  # TEMPORAL (sesión flujo GitOps): secrets-store-csi.yaml exige el CSI Driver
+  # instalado + Key Vault + Managed Identity reales. Se reactiva en la sesión
+  # dedicada a secretos (ver placeholders <ACR_NAME>, <MANAGED_IDENTITY_CLIENT_ID>).
 
 # Sobrescribe el ConfigMap base con los valores específicos de Azure AKS
 patches:
@@ -17,17 +19,21 @@ patches:
     target:
       kind: ConfigMap
       name: sri-facturacion-config
-  # Monta los secretos de Azure Key Vault vía CSI Driver
-  - path: deployment-secrets-patch.yaml
+  # TEMPORAL (sesión flujo GitOps): parche de prueba para la imagen pública
+  # hashicorp/http-echo (responde 200 en cualquier path, escucha en :5000).
+  # Cuando exista ACR con la imagen real, eliminar este parche y restaurar
+  # el parche deployment-secrets-patch.yaml + secrets-store-csi.yaml.
+  - path: deployment-test-command-patch.yaml
     target:
       kind: Deployment
-      name: sri-facturacion-service
+      name: sri-facturacion-service-deployment
 
-# Imagen desde Azure Container Registry (ACR)
+# TEMPORAL (sesión flujo GitOps): imagen pública de prueba.
+# Restaurar cuando exista ACR: <ACR_NAME>.azurecr.io/sri-facturacion-service
 images:
   - name: sri-facturacion-service
-    newName: <ACR_NAME>.azurecr.io/sri-facturacion-service
-    newTag: "1.0.0"
+    newName: hashicorp/http-echo
+    newTag: "latest"
 
 commonLabels:
   cloud: azure-aks

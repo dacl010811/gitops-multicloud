@@ -27,7 +27,9 @@ spec:
     spec:
       containers:
         - name: sri-facturacion-service-deployment
-          image: ghcr.io/tu-usuario/sri-facturacion-service:latest
+          # Nombre lógico: cada overlay lo redirige a su registry real
+          # (ECR/ACR) vía el transformer 'images:' de su kustomization.yaml
+          image: sri-facturacion-service:latest
           ports:
             - containerPort: 5000
               protocol: TCP

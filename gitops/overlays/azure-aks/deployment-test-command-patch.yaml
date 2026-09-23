@@ -1,0 +1,17 @@
+# TEMPORAL (sesión flujo GitOps): la imagen de prueba hashicorp/http-echo
+# escucha por defecto en :5678; este parche la ajusta al puerto 5000 que
+# esperan los probes /health y /ready del Deployment base.
+# Eliminar este archivo cuando la imagen real del microservicio esté en ACR.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sri-facturacion-service-deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: sri-facturacion-service-deployment
+          command: ["/bin/http-echo"]
+          args:
+            - "-listen=:5000"
+            - "-text=GitOps SRI OK - flujo validado en AKS"
