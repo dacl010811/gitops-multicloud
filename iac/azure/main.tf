@@ -25,7 +25,17 @@ terraform {
 }
 
 provider "azurerm" {
-  features {}
+  features {
+    resource_group {
+      # AKS crea recursos de Managed Prometheus (dataCollectionRules/Endpoints
+      # + prometheusRuleGroups) de forma ASÍNCRONA al cluster. Si el cluster
+      # vive lo suficiente, esos recursos quedan huérfanos en el RG y el
+      # destroy falla ("Resource Group still contains Resources"). Este RG
+      # existe únicamente para el cluster, así que el borrado en cascada
+      # vía API de Azure es seguro y evita limpieza manual.
+      prevent_deletion_if_contains_resources = false
+    }
+  }
 
   # Registro AUTOMÁTICO de resource providers (default). Con red estable,
   # Terraform registra solo lo necesario en el primer plan y los providers
