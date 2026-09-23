@@ -8,7 +8,7 @@ namespace: sri-facturacion
 
 resources:
   - ../../bases
-  - ingress.yaml
+  #- ingress.yaml
   # TEMPORAL (sesión flujo GitOps): secrets-store-csi.yaml exige el CSI Driver
   # instalado + Key Vault + Managed Identity reales. Se reactiva en la sesión
   # dedicada a secretos (ver placeholders <ACR_NAME>, <MANAGED_IDENTITY_CLIENT_ID>).
