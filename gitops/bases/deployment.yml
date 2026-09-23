@@ -38,12 +38,12 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: sri-facturacion-config
-                  key: environment
+                  key: ENVIRONMENT
             - name: CLOUD_PROVIDER
               valueFrom:
                 configMapKeyRef:
                   name: sri-facturacion-config
-                  key: cloud_provider
+                  key: CLOUD_PROVIDER
           resources:
             requests:
               memory: "256Mi"
