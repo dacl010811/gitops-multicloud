@@ -14,4 +14,4 @@ spec:
           #command: ["/bin/http-echo"]
           args:
             - "-listen=:5000"
-            - "-text=GitOps SRI OK - flujo validado en AKS"
+            - "-text=GitOps V2 Darwin Calle - flujo validado en AKS"
