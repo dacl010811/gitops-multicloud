@@ -25,6 +25,24 @@
       ]
     },
     {
+      "Sid": "EKSRBACAccessEntries",
+      "Effect": "Allow",
+      "Action": [
+        "eks:CreateAccessEntry",
+        "eks:DeleteAccessEntry",
+        "eks:DescribeAccessEntry",
+        "eks:UpdateAccessEntry",
+        "eks:ListAccessEntries",
+        "eks:AssociateAccessPolicy",
+        "eks:DisassociateAccessPolicy",
+        "eks:ListAssociatedAccessPolicies"
+      ],
+      "Resource": [
+        "arn:aws:eks:us-east-1:*:access-entry/sri-eks-cluster/*",
+        "arn:aws:eks:us-east-1:*:cluster/sri-eks-cluster*"
+      ]
+    },
+    {
       "Sid": "IAMForEKS",
       "Effect": "Allow",
       "Action": [

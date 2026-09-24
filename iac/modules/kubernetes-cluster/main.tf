@@ -55,6 +55,14 @@ resource "aws_eks_cluster" "main" {
     endpoint_private_access = true
     endpoint_public_access  = true
   }
+
+  # Modo de autenticacion API_AND_CONFIG_MAP: habilita ACCESS ENTRIES (el
+  # mecanismo moderno IAM->RBAC; el ConfigMap aws-auth queda como compatibilidad).
+  # Sin esto, el default del cluster es CONFIG_MAP y eks:CreateAccessEntry
+  # falla con InvalidRequestException (leccion sesion GitOps EKS).
+  access_config {
+    authentication_mode = "API_AND_CONFIG_MAP"
+  }
   
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
   
