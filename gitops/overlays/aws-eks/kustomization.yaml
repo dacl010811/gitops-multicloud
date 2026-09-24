@@ -8,26 +8,45 @@ namespace: sri-facturacion
 
 resources:
   - ../../bases
-  - ingress.yaml
-  - secrets-store-ssm.yaml
+  # TEMPORAL (sesion flujo GitOps EKS): ingress.yaml queda fuera porque requiere
+  # el AWS Load Balancer Controller (no instalado). Sin controller, el ALB nunca
+  # se provisiona y ArgoCD quedaria en Progressing eterno (misma leccion que
+  # AGIC en Azure). Se restaura en la sesion dedicada a ingress.
+  # - ingress.yaml
+  # TEMPORAL: secrets-store-ssm.yaml requiere Secrets Store CSI Driver +
+  # provider AWS (no instalados) y placeholders de SSM. Sesion dedicada a
+  # secretos lo restaura junto a deployment-secrets-patch.yaml.
+  # - secrets-store-ssm.yaml
 
-# Sobrescribe el ConfigMap base con los valores específicos de AWS EKS
+# Sobrescribe el ConfigMap base con los valores especificos de AWS EKS
 patches:
   - path: configmap-patch.yaml
     target:
       kind: ConfigMap
       name: sri-facturacion-config
-  # Monta los secretos de AWS Secrets Manager vía CSI Driver
-  - path: deployment-secrets-patch.yaml
+  # TEMPORAL: el parche de secretos monta parametros de SSM via CSI Driver
+  # (no instalado). NOTA-BUG: su target apunta a 'sri-facturacion-service'
+  # pero el Deployment real es 'sri-facturacion-service-deployment' -> jamas
+  # matchearia. Corregir el name al restaurarlo.
+  # - path: deployment-secrets-patch.yaml
+  #   target:
+  #     kind: Deployment
+  #     name: sri-facturacion-service
+  # Parche de PRUEBA: la imagen http-echo necesita args para servir texto en
+  # :5000 (SOLO args: la imagen trae su entrypoint; un 'command' aqui lo
+  # sobreescribiria y causa RunContainerError — leccion de la sesion Azure).
+  - path: deployment-test-command-patch.yaml
     target:
       kind: Deployment
-      name: sri-facturacion-service
+      name: sri-facturacion-service-deployment
 
-# Imagen desde Amazon ECR
+# TEMPORAL: imagen publica de prueba para validar el flujo sin ECR.
+# El nombre logico 'sri-facturacion-service' matchea la imagen del base
+# gracias al fix del transformer images: (misma leccion de Azure).
 images:
   - name: sri-facturacion-service
-    newName: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
-    newTag: "1.0.0"
+    newName: hashicorp/http-echo
+    newTag: "latest"
 
 commonLabels:
   cloud: aws-eks

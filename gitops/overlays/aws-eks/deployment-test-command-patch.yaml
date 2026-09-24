@@ -1,0 +1,15 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sri-facturacion-service-deployment
+spec:
+  template:
+    spec:
+      containers:
+        - name: sri-facturacion-service-deployment
+          # SOLO args: la imagen http-echo trae su propio entrypoint.
+          # Un 'command' aqui lo sobreescribiria con una ruta inexistente
+          # y causa RunContainerError/CrashLoopBackOff (leccion sesion Azure).
+          args:
+            - "-listen=:5000"
+            - "-text=GitOps desde AWS SRI OK - flujo validado en EKS"
