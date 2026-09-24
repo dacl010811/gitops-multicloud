@@ -12,4 +12,4 @@ spec:
           # y causa RunContainerError/CrashLoopBackOff (leccion sesion Azure).
           args:
             - "-listen=:5000"
-            - "-text=GitOps desde AWS SRI OK - flujo validado en EKS"
+            - "-text=GitOps desde AWS SRI OK V2 por Darwin Calle - flujo validado en EKS"
