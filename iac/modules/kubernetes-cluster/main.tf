@@ -87,6 +87,37 @@ resource "aws_vpc_security_group_ingress_rule" "eks_api" {
 }
 
 # ============================================
+# ACCESS ENTRIES: acceso humano por consola web (IAM -> RBAC)
+# ============================================
+# El creador del clúster (terraform-ci) recibe su entrada automáticamente.
+# Estas entradas declarativas cubren a los operadores humanos: sin ellas,
+# tras cada destroy/apply habría que repetir a mano 'aws eks create-access-entry'
+# + 'associate-access-policy' (antipatrón imperativo).
+
+resource "aws_eks_access_entry" "admin" {
+  for_each = var.cloud_provider == "aws" ? toset(var.admin_principal_arns) : toset([])
+
+  cluster_name  = aws_eks_cluster.main[0].name
+  principal_arn = each.value
+}
+
+resource "aws_eks_access_policy_association" "admin" {
+  for_each = var.cloud_provider == "aws" ? toset(var.admin_principal_arns) : toset([])
+
+  cluster_name  = aws_eks_cluster.main[0].name
+  principal_arn = each.value
+
+  # Política administrada por AWS: equivalente a cluster-admin de Kubernetes.
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.admin]
+}
+
+# ============================================
 # Nota: los recursos de Azure AKS viven en un módulo independiente
 # (iac/modules/kubernetes-cluster/azure) usado por el root iac/azure.
 # Este módulo es específico de AWS EKS para NO arrastrar el provider azurerm

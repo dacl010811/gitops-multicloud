@@ -56,6 +56,12 @@ variable "api_access_cidrs" {
   default     = []
 }
 
+variable "admin_principal_arns" {
+  description = "ARNs de usuarios IAM humanos que administran el clúster vía consola web. Reciben access entry + AmazonEKSClusterAdminPolicy (declarativo en el módulo). Vacío = ninguno."
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "Tags comunes para todos los recursos"
   type        = map(string)

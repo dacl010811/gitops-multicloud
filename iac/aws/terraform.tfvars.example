@@ -27,6 +27,17 @@ node_role_arn    = ""
 # cluster_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/LabRole"
 # node_role_arn    = "arn:aws:iam::<ACCOUNT_ID>:role/LabRole"
 
+# ============================================
+# Acceso humano por consola web (opcional)
+# ============================================
+# Usuario IAM humano (con password + MFA, creado a mano UNA sola vez por root:
+# 'aws iam create-user' + 'create-login-profile'). Su mapeo IAM->RBAC al
+# clúster SÍ es declarativo: el módulo crea el access entry con
+# AmazonEKSClusterAdminPolicy para cada ARN de esta lista.
+# Descomentar y ajustar el Account ID:
+#
+# admin_principal_arns = ["arn:aws:iam::<ACCOUNT_ID>:user/k8sweb-admin"]
+
 # Otras variables (opcionales; tienen defaults en variables.tf):
 # region             = "us-east-1"
 # cluster_name       = "sri-eks-cluster"
