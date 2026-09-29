@@ -187,6 +187,24 @@
         "tag:UntagResources"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "ECRForPipeline",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:CreateRepository",
+        "ecr:DescribeRepositories",
+        "ecr:GetRepositoryPolicy",
+        "ecr:ListTagsForResource",
+        "ecr:TagResource",
+        "ecr:UntagResource",
+        "ecr:PutLifecyclePolicy",
+        "ecr:GetLifecyclePolicy",
+        "ecr:DeleteLifecyclePolicy"
+      ],
+      "Resource": [
+        "arn:aws:ecr:us-east-1:*:repository/sri-facturacion-service"
+      ]
     }
   ]
 }

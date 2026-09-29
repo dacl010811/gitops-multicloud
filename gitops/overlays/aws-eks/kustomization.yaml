@@ -32,20 +32,15 @@ patches:
   #   target:
   #     kind: Deployment
   #     name: sri-facturacion-service
-  # Parche de PRUEBA: la imagen http-echo necesita args para servir texto en
-  # :5000 (SOLO args: la imagen trae su entrypoint; un 'command' aqui lo
-  # sobreescribiria y causa RunContainerError — leccion de la sesion Azure).
-  - path: deployment-test-command-patch.yaml
-    target:
-      kind: Deployment
-      name: sri-facturacion-service-deployment
 
-# TEMPORAL: imagen publica de prueba para validar el flujo sin ECR.
+# Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
+# aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit
+# set image' en cada build; aqui queda 'latest' como valor inicial.
 # El nombre logico 'sri-facturacion-service' matchea la imagen del base
-# gracias al fix del transformer images: (misma leccion de Azure).
+# gracias al transformer images: (misma leccion de Azure).
 images:
   - name: sri-facturacion-service
-    newName: hashicorp/http-echo
+    newName: 053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
     newTag: "latest"
 
 commonLabels:

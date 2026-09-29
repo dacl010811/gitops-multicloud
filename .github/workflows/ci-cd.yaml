@@ -3,7 +3,7 @@ name: CI/CD - SRI Facturación Service
 # Objetivo: pipeline completo en <15 min (test -> build/push multi-cloud -> bump de tag GitOps)
 on:
   push:
-    branches: [main]
+    branches: [main, feature-patron-appOfapps]
     paths:
       - "app/**"
       - ".github/workflows/ci-cd.yaml"
@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cloud: [aws, azure]
+        cloud: [aws]
     steps:
       - uses: actions/checkout@v4
 
@@ -141,7 +141,8 @@ jobs:
       - name: Bump image tag in overlays
         run: |
           (cd gitops/overlays/aws-eks && kustomize edit set image ${{ env.IMAGE_NAME }}=*:${{ env.IMAGE_TAG }})
-          (cd gitops/overlays/azure-aks && kustomize edit set image ${{ env.IMAGE_NAME }}=*:${{ env.IMAGE_TAG }})
+          # ACR aun no existe (~$5/mes). Restaurar cuando se provisione iac/azure/registry/:
+          # (cd gitops/overlays/azure-aks && kustomize edit set image ${{ env.IMAGE_NAME }}=*:${{ env.IMAGE_TAG }})
 
       - name: Commit & push manifest changes
         run: |
