@@ -156,5 +156,9 @@ jobs:
             echo "Sin cambios en manifiestos"
           else
             git commit -m "ci: bump image tag to ${IMAGE_TAG} [skip ci]"
+            # El checkout esta fijado al commit que disparo la corrida; en
+            # re-runs la rama remota puede haber avanzado -> integrar antes
+            # de empujar o el push se rechaza con non-fast-forward.
+            git pull --rebase origin ${{ github.ref_name }}
             git push
           fi

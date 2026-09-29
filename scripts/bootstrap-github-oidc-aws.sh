@@ -76,8 +76,15 @@ TRUST_POLICY=$(cat <<EOF
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "${OIDC_AUDIENCE}"
         },
+        # GitHub migro el claim sub a formato con IDs inmutables:
+        #   repo:owner@ID/repo@ID:ref:refs/heads/rama  (el patron viejo
+        #   repo:owner/repo:... ya NO matchea). Se aceptan AMBOS formatos
+        #   (StringLike con array = OR). Verificado via CloudTrail 2026-09-29.
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:${GITHUB_REPO}:ref:refs/heads/*"
+          "token.actions.githubusercontent.com:sub": [
+            "repo:${GITHUB_REPO}:ref:refs/heads/*",
+            "repo:${GITHUB_REPO%%/*}@*/${GITHUB_REPO##*/}@*:ref:refs/heads/*"
+          ]
         }
       }
     }
@@ -101,6 +108,8 @@ ECR_POLICY=$(cat <<EOF
       "Effect": "Allow",
       "Action": [
         "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer",
         "ecr:InitiateLayerUpload",
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
