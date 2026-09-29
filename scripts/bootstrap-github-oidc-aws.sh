@@ -68,7 +68,10 @@ TRUST_POLICY=$(cat <<EOF
       "Principal": {
         "Federated": "arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com"
       },
-      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Action": [
+        "sts:AssumeRoleWithWebIdentity",
+        "sts:TagSession"
+      ],
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "${OIDC_AUDIENCE}"
