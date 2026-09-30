@@ -13,7 +13,7 @@ from datetime import datetime
 app = FastAPI(
     title="SRI Facturación Service",
     description="Microservicio de facturación electrónica - Demostración GitOps Multicloud",
-    version="1.0.0",
+    version="2.0.0",
     contact={
         "name": "TFM UNIR - GitOps Multicloud",
         "email": "dev@sri-facturacion.dev"
