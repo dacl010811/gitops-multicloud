@@ -35,7 +35,7 @@ async def root():
     """Endpoint raíz"""
     return {
         "message": "SRI Facturación Service API 1.0.0",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "running"
     }
 
@@ -78,7 +78,7 @@ async def get_version(request: Request):
     cluster_name = os.getenv("CLUSTER_NAME", "unknown")
     
     return {
-        "version": "1.0.0",
+        "version": "2.0.0",
         "cloud": cloud_provider,
         "cluster": cluster_name,
         "hostname": socket.gethostname(),
