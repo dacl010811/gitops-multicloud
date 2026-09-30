@@ -44,6 +44,16 @@ spec:
                 configMapKeyRef:
                   name: sri-facturacion-config
                   key: CLOUD_PROVIDER
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sri-facturacion-config
+                  key: CLUSTER_NAME
+            - name: CLOUD_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: sri-facturacion-config
+                  key: CLOUD_REGION
           resources:
             requests:
               memory: "256Mi"

@@ -59,9 +59,18 @@ resource "aws_eks_cluster" "main" {
   # Modo de autenticacion API_AND_CONFIG_MAP: habilita ACCESS ENTRIES (el
   # mecanismo moderno IAM->RBAC; el ConfigMap aws-auth queda como compatibilidad).
   # Sin esto, el default del cluster es CONFIG_MAP y eks:CreateAccessEntry
-  # falla con InvalidRequestException (leccion sesion GitOps EKS).
+  # falla con InvalidRequestException (leccion sesion GitOps EKS 2026-09-23).
   access_config {
     authentication_mode = "API_AND_CONFIG_MAP"
+
+    # OBLIGATORIO declararlo explicito: es un bool Optional en el provider y
+    # su zero-value es false, asi que omitirlo hace que EKS NO cree la entrada
+    # automatica del creador (kubectl del creador falla con 401 aunque sea el
+    # que hizo el apply). Leccion empirica 2026-09-29: el bloque access_config
+    # por si solo desactiva el bootstrap que la API aplica por default cuando
+    # el bloque no existe. Sin access_config -> default true -> creador con
+    # entrada automatica; con access_config y sin este flag -> false -> nada.
+    bootstrap_cluster_creator_admin_permissions = true
   }
   
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
