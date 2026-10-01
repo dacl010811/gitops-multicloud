@@ -19,21 +19,17 @@ patches:
     target:
       kind: ConfigMap
       name: sri-facturacion-config
-  # TEMPORAL (sesión flujo GitOps): parche de prueba para la imagen pública
-  # hashicorp/http-echo (responde 200 en cualquier path, escucha en :5000).
-  # Cuando exista ACR con la imagen real, eliminar este parche y restaurar
-  # el parche deployment-secrets-patch.yaml + secrets-store-csi.yaml.
-  - path: deployment-test-command-patch.yaml
-    target:
-      kind: Deployment
-      name: sri-facturacion-service-deployment
+  # NOTA (sesión de secretos): restaurar deployment-secrets-patch.yaml junto
+  # con secrets-store-csi.yaml. OJO: ese parche declara metadata.name
+  # 'sri-facturacion-service', pero el Deployment base se llama
+  # 'sri-facturacion-service-deployment' — corregir el name antes de activarlo.
 
-# TEMPORAL (sesión flujo GitOps): imagen pública de prueba.
-# Restaurar cuando exista ACR: <ACR_NAME>.azurecr.io/sri-facturacion-service
+# Imagen real del microservicio en ACR (az acr build / pipeline CI).
+# El pull de los nodos usa la kubelet identity (AcrPull via bootstrap-acr-rbac-azure.sh).
 images:
   - name: sri-facturacion-service
-    newName: hashicorp/http-echo
-    newTag: "latest"
+    newName: sriacrtfm23c5.azurecr.io/sri-facturacion-service
+    newTag: "v1"
 
 commonLabels:
   cloud: azure-aks
