@@ -41,7 +41,7 @@ patches:
 images:
 - name: sri-facturacion-service
   newName: 053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
-  newTag: 405b2b378643a5ca313449115eac02680f03ca84
+  newTag: 0188592df462a701d4e748c12a8b34ad799e5f0c
 
 commonLabels:
   cloud: aws-eks
