@@ -17,7 +17,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Versión de Kubernetes"
   type        = string
-  default     = "1.34"
+  default     = "1.35"
 }
 
 variable "environment" {
