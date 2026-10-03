@@ -44,7 +44,7 @@
 | 3.5 | metrics-server | `kubectl top nodes` con métricas reales de los 3 nodos |
 | 4 | Application | `Synced/Degraded` → `Synced/Healthy` tras 3.5 — **INCIDENTE REAL: el HPA ciego** (ver sección 6) |
 | 5 | UI ArgoCD | v3.5.3; screenshot `diagramas/6_ArgoCD_Synced_ImagenReal_EKS.png`; 7 Healthy. **JoyA narrativa:** la revision sincronizada es `9b34501`, author DarwinCalle, comment "DEMO AZURE FINAL" — la imagen que corre en EKS nació del cierre de la demo Azure: la matriz dual-cloud publicó en ambos registros en una sola corrida |
-| 6 | Bucle vivo | **EN CURSO** |
+| 6 | Bucle vivo | ✅ COMPLETADO: 5.0.0→7.0.0 → pipeline dual-cloud → bump `[skip ci]` → auto-sync → nuevo RS `67dcd9c6b` → curl = 7.0.0/aws/sri-eks-cluster (misma cadena que Azure, cero kubectl) |
 | 7 | Destroy | Pendiente |
 
 ---
@@ -243,11 +243,11 @@ Abrir `https://localhost:8082` → usuario `admin` + la contraseña impresa.
 
 ### PASO 6.1 — El cambio (60 seg)
 
-Editar `app/main.py` — dos sitios, la versión actual `5.0.0` → **`6.0.0`** (número a tu criterio). SOLO ese archivo.
+Editar `app/main.py` — la versión actual `5.0.0` → nueva versión (en el ensayo real: **`7.0.0`**, elección del autor; son 3 apariciones: mensaje del raíz, `version` del raíz y `version` de `/api/v1/version`). SOLO ese archivo.
 
 ```bash
 git add app/main.py
-git commit -m "feat: bump app version 6.0.0 — demo AWS jurado"
+git commit -m "feat: bump app version 7.0.0 — demo AWS jurado"
 git push origin feature-patron-appOfapps
 ```
 
@@ -272,7 +272,21 @@ curl -s localhost:5000/health | head -3
 curl -s localhost:5000/api/v1/version
 ```
 
-**Esperado:** `{"version":"6.0.0","cloud":"aws","cluster":"sri-eks-cluster","hostname":"...-<nuevo-RS>..."}`
+**Esperado:** `{"version":"<nueva>","cloud":"aws","cluster":"sri-eks-cluster","hostname":"...-<nuevo-RS>..."}`
+
+**RESULTADO DEL ENSAYO REAL (2026-10-02/03):**
+
+```json
+{
+  "version": "7.0.0",
+  "cloud": "aws",
+  "cluster": "sri-eks-cluster",
+  "hostname": "sri-facturacion-service-deployment-67dcd9c6b-q6zfw",
+  "timestamp": "2026-10-03T04:34:04.189947"
+}
+```
+
+Bucle completo validado en la segunda nube: cambio 5.0.0→7.0.0 en `app/main.py` → push → pipeline dual-cloud (pytest + buildx a ECR con OIDC + bump `[skip ci]` en ambos overlays) → ArgoCD auto-sync → nuevo ReplicaSet `67dcd9c6b` rodando sin downtime → curl verifica cada campo. Misma cadena exacta que la demo Azure (donde fue 4.0.0→5.0.0 con RS `774488f6b8`): **dos nubes, un bucle, cero kubectl en el camino**.
 
 **Di al jurado:** *"De mi commit a producción: pipeline probó, construyó en la nube, publicó en ECR, y el bot actualizó Git. ArgoCD detectó el cambio y rodó la nueva versión sin downtime — yo no toqué el cluster ni una vez. Este bucle es idéntico al de Azure: el mismo código corriendo en dos nubes porque el patrón vive en Git, no en el proveedor."*
 
@@ -335,4 +349,4 @@ S3 con locking nativo `use_lockfile` (Terraform ≥ 1.10, sin DynamoDB) y cifrad
 
 ---
 
-*Guion gemelo de DEMO_AZURE_GITOPS_JURADO.md. Estado: Fases 0-5 COMPLETADAS en ensayo real (2026-10-02) — registro cronológico en §1.1; Fase 6 EN CURSO. Última actualización: 2026-10-02.*
+*Guion gemelo de DEMO_AZURE_GITOPS_JURADO.md. Estado: Fases 0-6 COMPLETADAS en ensayo real (2026-10-02) — registro cronológico en §1.1; pendiente Fase 7 (cierre FinOps). Última actualización: 2026-10-02.*
