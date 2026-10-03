@@ -45,7 +45,7 @@
 | 4 | Application | `Synced/Degraded` → `Synced/Healthy` tras 3.5 — **INCIDENTE REAL: el HPA ciego** (ver sección 6) |
 | 5 | UI ArgoCD | v3.5.3; screenshot `diagramas/6_ArgoCD_Synced_ImagenReal_EKS.png`; 7 Healthy. **JoyA narrativa:** la revision sincronizada es `9b34501`, author DarwinCalle, comment "DEMO AZURE FINAL" — la imagen que corre en EKS nació del cierre de la demo Azure: la matriz dual-cloud publicó en ambos registros en una sola corrida |
 | 6 | Bucle vivo | ✅ COMPLETADO: 5.0.0→7.0.0 → pipeline dual-cloud → bump `[skip ci]` → auto-sync → nuevo RS `67dcd9c6b` → curl = 7.0.0/aws/sri-eks-cluster (misma cadena que Azure, cero kubectl) |
-| 7 | Destroy | Pendiente |
+| 7 | Destroy | ✅ COMPLETADO: `Destroy complete! Resources: 11 destroyed` — cluster en 3m45s, roles IAM en 1s, state lock liberado limpio. Tercer destroy consecutivo limpio en AWS. Gasto: $0/h |
 
 ---
 
@@ -301,6 +301,8 @@ terraform destroy
 
 **Esperado:** `Destroy complete! Resources: 11 destroyed.` (~3 min; los access entries mueren antes que el cluster — dependencia declarativa). `Releasing state lock...` limpio (S3 use_lockfile).
 
+**RESULTADO DEL ENSAYO REAL (2026-10-02):** `Destroy complete! Resources: 11 destroyed` — `aws_eks_cluster.main` en 3m45s, roles IAM en 1s, `Releasing state lock...` limpio. Gasto detenido: $0/h. Ensayo cerrado de cero a cero.
+
 **Di al jurado:** *"Cierro destruyendo lo efímero. ¿Y qué sobrevive? El bucket de estado `sri-gitops-tfstate`, el repositorio ECR con `prevent_destroy` en su propio state (`aws/registry.tfstate`) — este destroy ni lo ve —, el rol OIDC de GitHub, y todo el conocimiento en Git. La próxima reconstrucción completa: un `terraform apply` de 10 minutos. Ese es el RTO de mi plataforma. Costo total de las dos demos: menos de un dólar."*
 
 **Cierre final de la serie:** *"Azure y AWS, dos demos, un solo diseño. La prueba definitiva de que esto es arquitectura, no configuración."*
@@ -349,4 +351,4 @@ S3 con locking nativo `use_lockfile` (Terraform ≥ 1.10, sin DynamoDB) y cifrad
 
 ---
 
-*Guion gemelo de DEMO_AZURE_GITOPS_JURADO.md. Estado: Fases 0-6 COMPLETADAS en ensayo real (2026-10-02) — registro cronológico en §1.1; pendiente Fase 7 (cierre FinOps). Última actualización: 2026-10-02.*
+*Guion gemelo de DEMO_AZURE_GITOPS_JURADO.md. Estado: Fases 0-7 COMPLETADAS — ensayo cerrado de cero a cero en la cuenta AWS real 053044806920 (2026-10-02), registro cronológico en §1.1. Última actualización: 2026-10-02.*
