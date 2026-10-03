@@ -169,6 +169,28 @@ Trabajar como root en consola es anti-patrón. Arquitectura limpia documentada:
 
 Producción: formalizar `aws_eks_access_entry` + `aws_eks_access_policy_association` en Terraform (ya está formalizado el auth mode; las entradas quedan como mejora).
 
+### 5.7 Evolución de la policy: la pareja acción+recurso en IAM (ECR)
+
+*(Sesión posterior — 02-oct-2026. Verificación humana de imágenes en ECR con `terraform-ci`.)*
+
+**Síntoma:** dos `AccessDenied` consecutivos al auditar el registry con `aws ecr describe-repositories` y `aws ecr describe-images`. El mensaje *"no identity-based policy allows the ecr:X action"* es engañoso: IAM evalúa la **pareja (acción, recurso)**, y el ARN al final del mensaje delata el recurso evaluado — leerlo primero.
+
+| # | Error | Gap real | Fix en `terraform-ci-policy.json` |
+|---|---|---|---|
+| 1 | `ecr:DescribeImages` sobre el ARN del repo | **Acción ausente** — la policy solo tenía acciones a nivel de repositorio (`DescribeRepositories`, lifecycle, tags) | `ecr:DescribeImages` añadido a `ECRForPipeline` (lectura, scoped al ARN del repo) |
+| 2 | `ecr:DescribeRepositories` sobre `repository/*` | **Recurso sin cubrir** — la acción SÍ estaba, pero el listado sin `--repository-names` se evalúa contra el comodín `repository/*`; el scope `repository/sri-facturacion-service` no lo cubre | Statement nuevo `ECRListRepositories` (solo lectura, `repository/*`) — mismo patrón que las `ec2:Describe*` con `Resource: "*"` |
+
+**Flujo del cambio** (el JSON del repo es la fuente de verdad): editar → subir con credenciales admin (`terraform-ci` no puede modificar su propia policy, ver 5.5) → ~30s de propagación IAM → verificar. Resultado:
+
+```
+describe-repositories → sri-facturacion-service
+describe-images       → 0188592df462... (sha del commit) + latest
+```
+
+Dos tags, la convención del pipeline: `<sha>` inmutable para trazabilidad GitOps + `latest` flotante (repo MUTABLE por diseño). Costo de la operación: $0 — APIs de solo lectura e IAM no se facturan.
+
+**Lección reutilizable:** ante un AccessDenied en least-privilege, clasificar gap de acción vs gap de recurso ANTES de ampliar permisos. Las políticas evolucionan por descubrimiento de flujos — segunda evolución documentada de `terraform-ci` (primera: `EKSRBACAccessEntries`).
+
 ---
 
 ## 6. ArgoCD (instalación idéntica a AKS)
