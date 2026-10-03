@@ -194,6 +194,7 @@
       "Action": [
         "ecr:CreateRepository",
         "ecr:DescribeRepositories",
+        "ecr:DescribeImages",
         "ecr:GetRepositoryPolicy",
         "ecr:ListTagsForResource",
         "ecr:TagResource",
@@ -204,6 +205,16 @@
       ],
       "Resource": [
         "arn:aws:ecr:us-east-1:*:repository/sri-facturacion-service"
+      ]
+    },
+    {
+      "Sid": "ECRListRepositories",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:DescribeRepositories"
+      ],
+      "Resource": [
+        "arn:aws:ecr:us-east-1:*:repository/*"
       ]
     }
   ]
