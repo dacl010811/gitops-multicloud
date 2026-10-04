@@ -2,7 +2,7 @@
 
 > Guion completo, comando a comando, de la demo **segunda nube**: AWS EKS.
 > Mismo repositorio, mismo pipeline, mismo ArgoCD — solo cambia el provider y el overlay.
-> Ensayado contra cuenta AWS real `053044806920` (us-east-1), pay-as-you-go.
+> Ensayado contra cuenta AWS real `${ACCOUNT_ID}` (us-east-1), pay-as-you-go.
 
 ---
 
@@ -30,11 +30,11 @@
 
 **Costo mientras el cluster vive:** control plane $0.10/h + 3 nodos ~$0.12/h ≈ **$0.22/h**. Por eso la Fase 7 es parte de la demo, no un trámite.
 
-### 1.1 Registro cronológico del ensayo real (2026-10-02, cuenta 053044806920)
+### 1.1 Registro cronológico del ensayo real (2026-10-02, cuenta ${ACCOUNT_ID})
 
 | # | Fase/Paso | Resultado real |
 |---|---|---|
-| 0.1-0.2 | Repo + identidad | Rama `feature-patron-appOfapps`; `sts get-caller-identity` → `terraform-ci` (Account 053044806920) |
+| 0.1-0.2 | Repo + identidad | Rama `feature-patron-appOfapps`; `sts get-caller-identity` → `terraform-ci` (Account ${ACCOUNT_ID}) |
 | 0.3 | Prueba del cero | `ResourceNotFoundException` para sri-eks-cluster — evidencia estrella |
 | 0.4 | ECR permanente | Repo `sri-facturacion-service` con imagen `0188592df462...` + `latest` (producción de la pata AWS del pipeline dual-cloud) |
 | 0.5 | OIDC permanente | Provider `token.actions.githubusercontent.com` + rol `github-actions-ecr-push` verificados (ejecutado retroactivo) |
@@ -71,7 +71,7 @@ read -s AWS_SECRET_ACCESS_KEY && export AWS_SECRET_ACCESS_KEY   # pegar sin eco
 aws sts get-caller-identity
 ```
 
-**Esperado:** JSON con tu `Account: 053044806920` y el Arn del usuario IAM.
+**Esperado:** JSON con tu `Account: ${ACCOUNT_ID}` y el Arn del usuario IAM.
 
 *(Nota: en Azure la identidad era un Service Principal con secret; en AWS es un usuario IAM con access keys. El pipeline en cambio NO usa estas keys: usa federación OIDC — pregunta del jurado preparada en sección 11.)*
 
@@ -104,7 +104,7 @@ aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[].Arn"
 aws iam get-role --role-name github-actions-ecr-push --query "Role.Arn" --output text
 ```
 
-**Esperado:** `arn:aws:iam::053044806920:oidc-provider/token.actions.githubusercontent.com` y `arn:aws:iam::053044806920:role/github-actions-ecr-push`. **Costo: $0** (lecturas IAM gratis).
+**Esperado:** `arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com` y `arn:aws:iam::${ACCOUNT_ID}:role/github-actions-ecr-push`. **Costo: $0** (lecturas IAM gratis).
 
 **NOTA — por qué este script NO se ejecuta en la demo (contraste con Azure):** `scripts/bootstrap-github-oidc-aws.sh` se ejecutó UNA sola vez (como root, bootstrap humano privilegiado) porque su sujeto —el rol que GitHub Actions asume— es permanente y ajeno al ciclo de vida del cluster: la demo solo lo VERIFICA. El script gemelo de Azure (`bootstrap-acr-rbac-azure.sh`) sí se re-ejecuta en cada recreate porque su sujeto —la kubelet identity— muere con el cluster (fue el incidente didáctico de la demo Azure). Dos scripts, dos ciclos de vida — y el guard del script AWS (aborta si la sesión no es root) hace que ejecutarlo en la demo fallara por diseño: la identidad de la demo es `terraform-ci`, no root.
 
@@ -195,7 +195,7 @@ kubectl get applications -n argocd
 kubectl -n sri-facturacion get pods -w
 ```
 
-**Esperado:** la Application `sri-facturacion-aws-eks` pasa a `Synced/Healthy` y los 3 pods de la app `Running` con la imagen `053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service` del último bump del pipeline.
+**Esperado:** la Application `sri-facturacion-aws-eks` pasa a `Synced/Healthy` y los 3 pods de la app `Running` con la imagen `${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service` del último bump del pipeline.
 
 **Di al jurado:** *"La Application apunta al MISMO repositorio que la de Azure — misma rama, distinto path: `gitops/overlays/aws-eks`. El overlay inyecta `CLOUD_PROVIDER=aws` y `CLUSTER_NAME=sri-eks-cluster`. Ni una línea de código de la app cambió."*
 
@@ -254,7 +254,7 @@ git push origin feature-patron-appOfapps
 ### PASO 6.2 — El pipeline (señalar los 3 momentos en Actions)
 
 1. **Test** → pytest verde
-2. **build-and-push (matriz aws+azure)** → en el job `aws`: `configure-aws-credentials@v4` asumiendo `arn:aws:iam::053044806920:role/github-actions-ecr-push` por **federación OIDC** (cero credenciales de larga vida), buildx empuja a ECR el tag `=<commit-sha>`
+2. **build-and-push (matriz aws+azure)** → en el job `aws`: `configure-aws-credentials@v4` asumiendo `arn:aws:iam::${ACCOUNT_ID}:role/github-actions-ecr-push` por **federación OIDC** (cero credenciales de larga vida), buildx empuja a ECR el tag `=<commit-sha>`
 3. **update-manifests** → `kustomize edit set image` + commit del bot `ci: bump image tag ... [skip ci]`
 
 ### PASO 6.3 — El re-deploy sin intervención
@@ -313,12 +313,12 @@ terraform destroy
 
 | Elemento | Valor |
 |---|---|
-| Cuenta AWS | `053044806920` |
+| Cuenta AWS | `${ACCOUNT_ID}` |
 | Región | `us-east-1` |
 | Cluster | `sri-eks-cluster` (k8s 1.35, 3 nodos, VPC default) |
-| ECR | `sri-facturacion-service` → `053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service` (MUTABLE, prevent_destroy, state `aws/registry.tfstate`) |
+| ECR | `sri-facturacion-service` → `${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service` (MUTABLE, prevent_destroy, state `aws/registry.tfstate`) |
 | Backend Terraform | S3 bucket `sri-gitops-tfstate`, key `aws/terraform.tfstate`, `use_lockfile` |
-| Rol OIDC pipeline | `arn:aws:iam::053044806920:role/github-actions-ecr-push` (secret GitHub: `AWS_ROLE_ARN`) |
+| Rol OIDC pipeline | `arn:aws:iam::${ACCOUNT_ID}:role/github-actions-ecr-push` (secret GitHub: `AWS_ROLE_ARN`) |
 | Workflow | `.github/workflows/ci-cd.yaml` — matriz `[aws, azure]` |
 | Application ArgoCD | `sri-facturacion-aws-eks` → path `gitops/overlays/aws-eks`, rama `feature-patron-appOfapps` |
 | App | puerto 5000: `/health`, `/ready`, `/metrics`, `/api/v1/version` (v5.0.0 → 6.0.0 en la demo) |
@@ -351,4 +351,4 @@ S3 con locking nativo `use_lockfile` (Terraform ≥ 1.10, sin DynamoDB) y cifrad
 
 ---
 
-*Guion gemelo de DEMO_AZURE_GITOPS_JURADO.md. Estado: Fases 0-7 COMPLETADAS — ensayo cerrado de cero a cero en la cuenta AWS real 053044806920 (2026-10-02), registro cronológico en §1.1. Última actualización: 2026-10-02.*
+*Guion gemelo de DEMO_AZURE_GITOPS_JURADO.md. Estado: Fases 0-7 COMPLETADAS — ensayo cerrado de cero a cero en la cuenta AWS real ${ACCOUNT_ID} (2026-10-02), registro cronológico en §1.1. Última actualización: 2026-10-02.*

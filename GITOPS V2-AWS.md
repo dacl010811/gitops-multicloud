@@ -3,7 +3,7 @@
 **Fecha:** 23 de septiembre de 2026
 **Rama de trabajo:** `feature-patron-appOfapps`
 **Cluster:** `sri-eks-cluster` (EKS, us-east-1, k8s 1.31, 3× t3.medium)
-**Cuenta:** AWS real 053044806920 (IAM user `terraform-ci`)
+**Cuenta:** AWS real ${ACCOUNT_ID} (IAM user `terraform-ci`)
 **Objetivo:** replicar el flujo GitOps validado en AKS sobre EKS — cerrar la simetría multi-nube del TFM
 **Resultado:** `Synced / Healthy` a la primera + demo commit v1→v2
 
@@ -136,9 +136,9 @@ aws eks update-cluster-config --name sri-eks-cluster \
   --access-config authenticationMode=API_AND_CONFIG_MAP
 
 aws eks create-access-entry --cluster-name sri-eks-cluster \
-  --principal-arn arn:aws:iam::053044806920:root
+  --principal-arn arn:aws:iam::${ACCOUNT_ID}:root
 aws eks associate-access-policy --cluster-name sri-eks-cluster \
-  --principal-arn arn:aws:iam::053044806920:root \
+  --principal-arn arn:aws:iam::${ACCOUNT_ID}:root \
   --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy \
   --access-scope type=cluster
 

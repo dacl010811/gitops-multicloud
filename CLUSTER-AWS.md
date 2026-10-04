@@ -1,6 +1,6 @@
 # 1. Verificar credenciales AWS
 aws sts get-caller-identity
-# Debe mostrar: "Arn": "arn:aws:iam::053044806920:user/terraform-ci"
+# Debe mostrar: "Arn": "arn:aws:iam::${ACCOUNT_ID}:user/terraform-ci"
 
 # 2. Ir al directorio de IaC
 cd /Users/admin/Documents/UNIR2025/MATERIAS-MASTER-2025/materias-master-devops2025/trabajofinalmaster2026/gitops-multicloud

@@ -1,6 +1,6 @@
 # AWS Load Balancer Controller + IRSA — Exposición al mundo y pruebas de carga
 
-> **Sesión:** 2026-10-03 · **Nube:** AWS (us-east-1) · **Cuenta:** 053044806920
+> **Sesión:** 2026-10-03 · **Nube:** AWS (us-east-1) · **Cuenta:** ${ACCOUNT_ID}
 > **Objetivo:** exponer el servicio del EKS al mundo vía ALB (capa 7) instalando el AWS Load Balancer Controller con identidad IRSA, y demostrar autoscaling real del HPA bajo carga.
 > **Estado:** Documento vivo — se actualiza al cerrar cada bloque.
 
@@ -47,7 +47,7 @@ Las demos anteriores probaron el **bucle GitOps interno** (commit → pipeline �
 
 | Fase | Hora | Duración | Resultado | Observaciones |
 |---|---|---|---|---|
-| 0. Verificación | | | ✅ COMPLETADA | helm v3.19.2 (tarball oficial; brew falló en iMac Intel) + hey v0.1.5 (Homebrew tras `sudo chown` fish); ab plan B · cuenta 053044806920 ✅ · ResourceNotFoundException (cero absoluto) ✅ · rama feature-patron-appOfapps up to date ✅ · working tree = solo cambios Bloque 2, sin commit ✅ |
+| 0. Verificación | | | ✅ COMPLETADA | helm v3.19.2 (tarball oficial; brew falló en iMac Intel) + hey v0.1.5 (Homebrew tras `sudo chown` fish); ab plan B · cuenta ${ACCOUNT_ID} ✅ · ResourceNotFoundException (cero absoluto) ✅ · rama feature-patron-appOfapps up to date ✅ · working tree = solo cambios Bloque 2, sin commit ✅ |
 | 1. Cluster EKS | | | ✅ COMPLETADA | plan "11 to add" ✅ → apply: 11 added (node group 2m49s), endpoint gr7.us-east-1 ✅ |
 | 2. Acceso + nodos | | | ✅ COMPLETADA | update-kubeconfig OK (context gr7.us-east-1) + 3 nodos Ready v1.35.8-eks-3b4a6ca (~7m50s) |
 | 3. ArgoCD + 3.5 metrics-server | | | ✅ COMPLETADA | 7/7 pods ArgoCD Running (0 restarts, ~5m30s) + metrics-server OK (top nodes: 1% CPU / ~14-15% mem) — HPA ya no estará ciego |
@@ -94,7 +94,7 @@ helm version --short 2>/dev/null || echo "HELM NO INSTALADO"
 command -v hey >/dev/null 2>&1 && echo "HEY INSTALADO" || echo "HEY NO INSTALADO"   # hey NO tiene flag -version
 ```
 
-**Esperado:** cuenta `053044806920` · `ResourceNotFoundException` (cero absoluto) · rama de trabajo con los cambios del Bloque 2 ya en working tree (ver §B2-PREVIO) · **sin commits todavía**.
+**Esperado:** cuenta `${ACCOUNT_ID}` · `ResourceNotFoundException` (cero absoluto) · rama de trabajo con los cambios del Bloque 2 ya en working tree (ver §B2-PREVIO) · **sin commits todavía**.
 **Si HELM NO INSTALADO:** tarball oficial del CDN de Helm (`get.helm.sh`, darwin-amd64) movido a `/usr/local/bin` — local, $0, sin sudo ni brew. **Si HEY NO INSTALADO:** Go + `go install github.com/rakyll/hey@latest` (local, $0) — o usamos `ab`, ya incluido en macOS.
 
 **Resultado real (sesión 2026-10-03):** ambos NO instalados en la iMac → `brew install helm hey` **falló** (dirs `/usr/local/share/fish` no escribibles + Intel Tier 3 sin bottles). Resolución mixta, verificada en la máquina:
@@ -111,7 +111,7 @@ hey 2>&1 | head -1       # obtenido: Usage: hey [options...] <url>
 
 Local y sin costo. Plan B sin instalar nada: `ab -t 120 -c 50 -H "Host: api.sri.ec.gob.ec" "http://$ALB/health/"` (ApacheBench ya viene en macOS). Es la única pausa del Bloque 1.
 
-**Confirmado en vivo (sesión 2026-10-03):** `aws sts get-caller-identity` → `053044806920` ✅ · `aws eks describe-cluster` → `ResourceNotFoundException: No cluster found for name: sri-eks-cluster` ✅ (cero absoluto, igual que los ensayos previos).
+**Confirmado en vivo (sesión 2026-10-03):** `aws sts get-caller-identity` → `${ACCOUNT_ID}` ✅ · `aws eks describe-cluster` → `ResourceNotFoundException: No cluster found for name: sri-eks-cluster` ✅ (cero absoluto, igual que los ensayos previos).
 
 **git status confirmado (fase CERRADA ✅):** rama `feature-patron-appOfapps` (up to date con origin) · modified: `ingress.yaml` + `kustomization.yaml` · untracked: guion, `hpa-patch.yaml`, `iac/aws/lb-controller/` · **sin commits** y sin archivos sensibles en el árbol. Dato de sesión: el CWD ya era `iac/aws` (los paths salieron relativos `../../`), punto exacto donde arranca la Fase 1.
 
@@ -135,7 +135,7 @@ aws eks update-kubeconfig --region us-east-1 --name sri-eks-cluster
 kubectl get nodes   # 3 Ready
 ```
 
-**Resultado real (sesión 2026-10-03):** `Updated context arn:aws:eks:us-east-1:053044806920:cluster/sri-eks-cluster in ~/.kube/config` ✅ · **3 nodos Ready** `v1.35.8-eks-3b4a6ca` (ip-172-31-0-21 / ip-172-31-40-156 / ip-172-31-85-33, ~7m50s) ✅ — terraform-ci entró por su access entry de creador (`bootstrap_cluster_creator_admin_permissions`), cero fricción.
+**Resultado real (sesión 2026-10-03):** `Updated context arn:aws:eks:us-east-1:${ACCOUNT_ID}:cluster/sri-eks-cluster in ~/.kube/config` ✅ · **3 nodos Ready** `v1.35.8-eks-3b4a6ca` (ip-172-31-0-21 / ip-172-31-40-156 / ip-172-31-85-33, ~7m50s) ✅ — terraform-ci entró por su access entry de creador (`bootstrap_cluster_creator_admin_permissions`), cero fricción.
 
 ### FASE 3 — ArgoCD + PASO 3.5 metrics-server (5 min, $0)
 
@@ -239,7 +239,7 @@ Qué hace el script, bloque a bloque (la explicación antes de ejecutar):
 
 ### FASE 7 — Habilitar el Ingress → el ALB nace (~10 min, ALB $0.0225/h desde aquí)
 
-**Incidente real (sesión 2026-10-03/04) — el segundo mejor momento del día:** tras el push, el Ingress se sincronizó pero el ADDRESS no apareció. Los eventos del Ingress (`FailedBuildModel`) y los logs del controller mostraron: `couldn't auto-discover subnets ... UnauthorizedOperation ... User: arn:aws:sts::053044806920:assumed-role/sri-eks-cluster-alb-controller/... is not authorized to perform: ec2:DescribeRouteTables`. Dos joyas en un solo error: (1) el usuario del error es el **assumed-role IRSA** — la Fase 5 quedó validada de punta a punta por el propio runtime (OIDC → trust policy → credenciales temporales STS funcionando en producción); (2) causa raíz: **drift de versiones** — el chart "latest" resolvió controller v3.5.0 (ago-2026), que clasifica subnets públicas/privadas leyendo **route tables**, permiso que la política oficial v2.7.2 no traía porque esa generación de controller no lo usaba. Fix declarativo: `ec2:DescribeRouteTables` añadido a `iam_policy.json` + `terraform apply` en `iac/aws/lb-controller` (crea una **nueva versión** de la policy `AWSLoadBalancerControllerIAMPolicy` — exactamente para esto el PASO 5.0 ya incluía `iam:CreatePolicyVersion`). El controller reintenta el reconcile solo con su backoff exponencial: en ~1–3 min aparece el ADDRESS sin tocar nada más. **Lección de oro para el jurado:** en least-privilege, un AccessDenied es la especificación exacta del permiso que falta; y política IAM + versión de controller deben evolucionar **en conjunto** (en producción: chart pineado + política del mismo release).
+**Incidente real (sesión 2026-10-03/04) — el segundo mejor momento del día:** tras el push, el Ingress se sincronizó pero el ADDRESS no apareció. Los eventos del Ingress (`FailedBuildModel`) y los logs del controller mostraron: `couldn't auto-discover subnets ... UnauthorizedOperation ... User: arn:aws:sts::${ACCOUNT_ID}:assumed-role/sri-eks-cluster-alb-controller/... is not authorized to perform: ec2:DescribeRouteTables`. Dos joyas en un solo error: (1) el usuario del error es el **assumed-role IRSA** — la Fase 5 quedó validada de punta a punta por el propio runtime (OIDC → trust policy → credenciales temporales STS funcionando en producción); (2) causa raíz: **drift de versiones** — el chart "latest" resolvió controller v3.5.0 (ago-2026), que clasifica subnets públicas/privadas leyendo **route tables**, permiso que la política oficial v2.7.2 no traía porque esa generación de controller no lo usaba. Fix declarativo: `ec2:DescribeRouteTables` añadido a `iam_policy.json` + `terraform apply` en `iac/aws/lb-controller` (crea una **nueva versión** de la policy `AWSLoadBalancerControllerIAMPolicy` — exactamente para esto el PASO 5.0 ya incluía `iam:CreatePolicyVersion`). El controller reintenta el reconcile solo con su backoff exponencial: en ~1–3 min aparece el ADDRESS sin tocar nada más. **Lección de oro para el jurado:** en least-privilege, un AccessDenied es la especificación exacta del permiso que falta; y política IAM + versión de controller deben evolucionar **en conjunto** (en producción: chart pineado + política del mismo release).
 
 **Resultado real (Fase 7):** tras el apply (1 changed: nueva versión de policy, sin re-attach — el attachment apunta a la policy, no a la versión) + `rollout restart` del controller, el ADDRESS apareció: **`k8s-srifactu-srifactu-a08031345f-58486945.us-east-1.elb.amazonaws.com`**. Verificación funcional: `/health` → `healthy` y `/api/v1/version` → `{"version":"7.0.0","cloud":"aws","cluster":"sri-eks-cluster"}`; repitiendo el curl, el `hostname` **alterna entre pods** (`-dvtdh` → `-5v6jj`) — el ALB balancea a las IPs de los pods directo (`target-type: ip`), y el fix del service name heredado quedó probado (sin él: 404 eternos). Gap detectado en el cross-check: terraform-ci carecía de `elasticloadbalancing:Describe*` (AccessDenied en `describe-load-balancers`) — tercera evolución least-privilege del día, fix preparado en `iac/aws/policies/terraform-ci-policy.json` (statement `ELBReadOnlyForGitOps`; Resource `*` obligatorio porque las Describe* de ELB no admiten resource-level permissions), a aplicar como root antes de la verificación de cierre del Bloque 4. **BLOQUE 2 COMPLETO: IRSA + controller + ALB en vivo, todo por GitOps.** El ALB factura $0.0225/h desde su nacimiento. Verificación post-fix de la tercera política: `aws elbv2 describe-load-balancers` (AccessDenied antes) → tabla con el ALB `application/active` — `ELBReadOnlyForGitOps` propagada a terraform-ci.
 
@@ -359,7 +359,7 @@ kubectl get hpa -n sri-facturacion -w     # ArgoCD aplica el patch en <2 min
 
 | Dato | Valor |
 |---|---|
-| Cuenta / región | 053044806920 / us-east-1 |
+| Cuenta / región | ${ACCOUNT_ID} / us-east-1 |
 | Cluster | `sri-eks-cluster` (k8s 1.35, 3 × t3.medium, VPC default) |
 | Namespace app | `sri-facturacion` |
 | Service | `sri-facturacion-service-svc` :80 → pods :5000 (puerto named `http`) |
