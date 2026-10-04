@@ -70,6 +70,13 @@ Las demos anteriores probaron el **bucle GitOps interno** (commit → pipeline �
 - **Incidentes del día (todos convertidos en lección y fix versionado):** file() evaluado en plan (iam_policy.json provisionado local); chart v3.5.0 sin vpcId → IMDS inalcanzable desde pod (VPC por API en el script); drift política v2.7.2 vs controller v3.5.0 (ec2:DescribeRouteTables, nueva versión de policy); indentación de secuencia patches (regla: validar `kubectl kustomize` ANTES de cada commit; hueco CI registrado como mejora: step de build de overlays).
 - **Precalentamiento del objetivo #4 (secretos):** la sesión dejó el patrón IRSA operativo de punta a punta (OIDC provider + rol + SA anotada + credenciales temporales validadas en runtime por el propio FailedBuildModel) — la sesión SSM + Secrets Store CSI Driver lo reutiliza cambiando el sujeto del trust.
 
+### PRÓXIMA SESIÓN ACORDADA (elección del operador, cierre 2026-10-04): Secretos SSM + Secrets Store CSI Driver (objetivo #4)
+
+- **Decisiones ya tomadas:** SSM Parameter Store **Standard** (gratis; NO Secrets Manager a $0.40/secreto/mes — lección FinOps); módulo nuevo `iac/aws/secrets-csi/` con backend/state propio (mismo patrón que `lb-controller`); script idempotente `scripts/bootstrap-secrets-csi-eks.sh` (driver + provider AWS, guards + verificación como el de hoy); política terraform-ci ampliada vía consola como **root** (PASO X.0, patrón del PASO 5.0: `ssm:GetParameter*`/`DescribeParameters` scoped a `/sri-facturacion/*` + permisos de versionado de policy).
+- **Fix planificado en vivo:** bug #7 — `deployment-secrets-patch.yaml` con target `sri-facturacion-service` → `sri-facturacion-service-deployment` (lección de diagnóstico ya sembrada en el overlay).
+- **Presupuesto aprobado:** ~$0.45–0.70 (solo EKS ~2 h encendido; sin ALB — nada facturable en SSM Standard ni en el driver).
+- **Backlog subsiguiente (orden sugerido):** sesión gemela Azure (requiere decisión previa AGIC/AppGW ~$0.07/h vs nginx+LB Standard ~$0.0225/h) → monitoring kube-prometheus-stack (objetivo #6) → merge final a main con el job de validación `kustomize build` en CI (hueco detectado hoy).
+
 ---
 
 ## BLOQUE 1 — Restaurar el laboratorio (Fases 0–4)
