@@ -56,7 +56,19 @@ Las demos anteriores probaron el **bucle GitOps interno** (commit → pipeline �
 | 6. Helm: LB Controller | | | ✅ COMPLETADA | 1ª pasada: CrashLoopBackOff (chart v3.5.0 sin vpcId → IMDS inalcanzable desde pod) → fix en script (VPC por API + --set vpcId) → re-ejecución: rollout OK, 2 pods Running 1/1, RS 7474987bc7 |
 | 7. Ingress → ALB | | | ✅ COMPLETADA | Push → ArgoCD sync → ADDRESS vacío → FailedBuildModel (ec2:DescribeRouteTables — drift policy v2.7.2 vs controller v3.5.0) → fix versionado → ALB k8s-srifactu-srifactu-a08031345f-58486945.us-east-1.elb.amazonaws.com |
 | 8. Carga + HPA en vivo | | | ✅ COMPLETADA | Umbral 5% (tras fix de indentación c0b0748): escalada 3→7→10 con +2/60s, CPU convergiendo 53→33→29%; target group con 9-10 IPs de PODS healthy (target-type ip registrando al vuelo; verificado vía nueva política ELBReadOnly) |
-| 9. Cierre FinOps | | | ⬜ | |
+| 9. Cierre FinOps | | | ✅ COMPLETADA | Revert overlay (2bf1b84) → prune del Ingress → controller BORRA el ALB → destroy lb-controller (4) → destroy cluster (11, cluster 3m43s) → ResourceNotFoundException + elbv2 VACÍO = regla de oro cumplida (cero ALB huerfanos). Cuenta a $0/h |
+
+**BLOQUE 4 — Resultado real (2026-10-04):** el cierre ejecutó la secuencia exacta del plan: revert → prune (ALB eliminado por el controller, verificado con la política ELBReadOnly recién creada) → `terraform destroy` en lb-controller (4 destroyed) → `terraform destroy` en iac/aws (**11 destroyed**, cluster en 3m43s, lock liberado limpio) → verificaciones finales: `ResourceNotFoundException` + `describe-load-balancers` **vacío**.
+
+---
+
+## SELLO FINOPS Y REPRODUCIBILIDAD DE LA SESIÓN
+
+- **Factura estimada:** ~$1.0–1.1 (EKS ~4h15m ≈ $0.96 + ALB ~1.5h ≈ $0.04 + LCU céntimos) — dentro del presupuesto anunciado en la apertura ($1.0–1.3).
+- **Estado final de la cuenta:** $0/h. Todo lo efímero destruido en orden correcto; todo lo permanente verificado (ECR, OIDC GitHub, usuario terraform-ci con política ampliada: IAMForIRSA + ELBReadOnlyForGitOps).
+- **Repo 100% reproducible** (levantar tal cual mañana): commits `7209747` (módulo IRSA completo + script bootstrap + IAMForIRSA) → `325386f` (+ DescribeRouteTables + ELBReadOnlyForGitOps) → `c0b0748` (fix indentación) → `2bf1b84` (revert del cierre). El guion completo de la sesión (este documento) quedó versionado como runbook.
+- **Incidentes del día (todos convertidos en lección y fix versionado):** file() evaluado en plan (iam_policy.json provisionado local); chart v3.5.0 sin vpcId → IMDS inalcanzable desde pod (VPC por API en el script); drift política v2.7.2 vs controller v3.5.0 (ec2:DescribeRouteTables, nueva versión de policy); indentación de secuencia patches (regla: validar `kubectl kustomize` ANTES de cada commit; hueco CI registrado como mejora: step de build de overlays).
+- **Precalentamiento del objetivo #4 (secretos):** la sesión dejó el patrón IRSA operativo de punta a punta (OIDC provider + rol + SA anotada + credenciales temporales validadas en runtime por el propio FailedBuildModel) — la sesión SSM + Secrets Store CSI Driver lo reutiliza cambiando el sujeto del trust.
 
 ---
 
