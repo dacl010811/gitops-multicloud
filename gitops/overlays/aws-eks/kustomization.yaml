@@ -16,10 +16,10 @@ resources:
   # Ingress y el controller BORRA el ALB. REGLA DE ORO FinOps: el Ingress
   # se borra ANTES que el cluster; si no, el ALB queda huerfano facturando.
   # - ingress.yaml
-  # TEMPORAL: secrets-store-ssm.yaml requiere Secrets Store CSI Driver +
-  # provider AWS (no instalados) y placeholders de SSM. Sesion dedicada a
-  # secretos lo restaura junto a deployment-secrets-patch.yaml.
-  # - secrets-store-ssm.yaml
+  # SESION SECRETOS (2026-10-05): ACTIVADO — requiere CSI Driver + provider
+  # AWS instalados (scripts/bootstrap-secrets-csi-eks.sh) y parametros SSM
+  # /sri-facturacion/* (iac/aws/secrets-csi). Revertido en el cierre del dia.
+- secrets-store-ssm.yaml
 
 # Sobrescribe el ConfigMap base con los valores especificos de AWS EKS
 patches:
@@ -33,14 +33,14 @@ patches:
   #   target:
   #     kind: HorizontalPodAutoscaler
   #     name: sri-facturacion-service-hpa
-  # TEMPORAL: el parche de secretos monta parametros de SSM via CSI Driver
-  # (no instalado). NOTA-BUG: su target apunta a 'sri-facturacion-service'
-  # pero el Deployment real es 'sri-facturacion-service-deployment' -> jamas
-  # matchearia. Corregir el name al restaurarlo.
-  # - path: deployment-secrets-patch.yaml
-  #   target:
-  #     kind: Deployment
-  #     name: sri-facturacion-service
+  # SESION SECRETOS (2026-10-05): ACTIVADO tras fix del bug #7 — metadata.name
+  # y container name del patch apuntan a sri-facturacion-service-deployment
+  # (el nombre REAL del base; sin el fix del container name, el strategic
+  # merge anadiria un segundo container en vez de parchear el existente).
+- path: deployment-secrets-patch.yaml
+  target:
+    kind: Deployment
+    name: sri-facturacion-service-deployment
 
 # Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
 # aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit

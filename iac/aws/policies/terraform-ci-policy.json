@@ -62,7 +62,8 @@
       "Resource": [
         "arn:aws:iam::*:role/sri-eks-cluster-eks-cluster-role",
         "arn:aws:iam::*:role/sri-eks-cluster-eks-node-role",
-        "arn:aws:iam::*:role/sri-eks-cluster-alb-controller"
+        "arn:aws:iam::*:role/sri-eks-cluster-alb-controller",
+        "arn:aws:iam::*:role/sri-eks-cluster-secrets-csi"
       ]
     },
     {
@@ -84,7 +85,8 @@
       ],
       "Resource": [
         "arn:aws:iam::*:oidc-provider/oidc.eks.us-east-1.amazonaws.com/*",
-        "arn:aws:iam::*:policy/AWSLoadBalancerControllerIAMPolicy"
+        "arn:aws:iam::*:policy/AWSLoadBalancerControllerIAMPolicy",
+        "arn:aws:iam::*:policy/sri-eks-cluster-secrets-csi"
       ]
     },
     {
@@ -251,6 +253,30 @@
         "elasticloadbalancing:DescribeTargetGroups",
         "elasticloadbalancing:DescribeTargetHealth",
         "elasticloadbalancing:DescribeTags"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SSMParametersForSecretsSession",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:PutParameter",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "ssm:DeleteParameter",
+        "ssm:AddTagsToResource",
+        "ssm:ListTagsForResource"
+      ],
+      "Resource": [
+        "arn:aws:ssm:us-east-1:053044806920:parameter/sri-facturacion/*"
+      ]
+    },
+    {
+      "Sid": "SSMDiagnosticoGlobal",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeParameters"
       ],
       "Resource": "*"
     }
