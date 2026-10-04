@@ -34,6 +34,12 @@ echo "==> PASO 1. Repo Helm del driver (kubernetes-sigs)"
 helm repo add --force-update secrets-store-csi-driver https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
 helm repo update secrets-store-csi-driver >/dev/null
 
+# LECCION ROOT-CAUSE (2026-10-05, incidente #4): el nombre del driver CSI
+# registrado es secrets-store.csi.k8s.io (SIN "x-"); el sufijo x-k8s.io es
+# del GRUPO API del CRD SecretProviderClass (apiVersion de la SPC), NO del
+# driver. El chart SI crea su CSIDriver y el registro nace sano (logs del
+# node-driver-registrar: PluginRegistered:true). Aqui existia un "PASO 2"
+# que creaba un CSIDriver fantasma secrets-store.csi.x-k8s.io — eliminado.
 echo "==> PASO 2. Secrets Store CSI Driver v${DRIVER_CHART_VERSION}"
 echo "    syncSecret.enabled=true  -> secretObjects (sincroniza a Secret nativo de k8s)"
 echo "    anotacion IRSA en el SA del propio chart (no creamos SA custom)"
@@ -57,10 +63,23 @@ kubectl annotate sa secrets-store-csi-driver -n kube-system "eks.amazonaws.com/r
 echo "==> PASO 3. AWS provider (DaemonSet: inyecta el binario del provider en cada pod del driver)"
 kubectl apply -f https://raw.githubusercontent.com/aws/secrets-store-csi-driver-provider-aws/main/deployment/aws-provider-installer.yaml
 
-echo "==> PASO 4. Verificacion de rollout"
+echo "==> PASO 4. Verificacion de rollout + registro CSI por nodo"
 kubectl rollout status ds/secrets-store-csi-driver -n "$DRIVER_NS" --timeout=180s
 kubectl rollout status ds/csi-secrets-store-provider-aws -n "$DRIVER_NS" --timeout=120s
 kubectl get pods -n "$DRIVER_NS" | grep -E "secrets-store-csi-driver|provider-aws" || true
+# LECCION (incidente #4): listar SIN nombre — el nombre REAL del driver y su
+# CSIDiver aparecen aqui; buscar un nombre a ojo (x-k8s.io vs k8s.io) fue lo
+# que costo la hora de diagnostico.
+echo "--- CSIDrivers registrados en el cluster:"
+kubectl get csidrivers
 
 echo "OK: driver + provider listos. Anotacion IRSA del SA:"
 kubectl get sa secrets-store-csi-driver -n "$DRIVER_NS" -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}' && echo
+
+echo "--- Registro CSI por nodo (node-driver-registrar):"
+# Registrar v2.x: el exito se ve como NotifyRegistrationStatus con
+# PluginRegistered:true (el literal "Registered plugin" es de versiones
+# antiguas del sidecar y aqui NO existe).
+kubectl logs -n "$DRIVER_NS" -l app=secrets-store-csi-driver -c node-driver-registrar --tail=3 --prefix 2>/dev/null \
+  | grep -E "Registration Server started|NotifyRegistrationStatus" | tail -3 \
+  || echo "AVISO: sin lineas de registro aun; revisa: kubectl logs -n kube-system -l app=secrets-store-csi-driver -c node-driver-registrar"

@@ -71,8 +71,16 @@ resource "aws_iam_openid_connect_provider" "eks" {
 }
 
 # ============================================
-# Trust policy: solo el ServiceAccount kube-system/secrets-store-csi-driver
-# (el que crea el chart del driver) puede asumir este rol.
+# Trust policy: QUIEN consume este rol.
+#
+# INCIDENTE-LECCION (2026-10-05): la 1ª version apuntaba SOLO al SA del
+# driver (kube-system/secrets-store-csi-driver) — ERROR DE DISEÑO: el
+# provider del CSI NO usa la identidad del driver al montar; usa el TOKEN
+# del ServiceAccount del POD QUE MONTA el volumen (la app). Sin trust al
+# SA de la app, el provider cae a las credenciales del NODO (node role,
+# sin ssm:GetParameter) -> MountVolume.SetUp AccessDenied -> ContainerCreating
+# eterno. Trust DUAL: la app (sri-facturacion/default) consume el rol para
+# leer parametros; el driver queda cubierto por si acaso.
 # ============================================
 data "aws_iam_policy_document" "irsa_trust" {
   statement {
@@ -87,7 +95,10 @@ data "aws_iam_policy_document" "irsa_trust" {
     condition {
       test     = "StringEquals"
       variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
-      values   = ["system:serviceaccount:kube-system:secrets-store-csi-driver"]
+      values = [
+        "system:serviceaccount:sri-facturacion:default",
+        "system:serviceaccount:kube-system:secrets-store-csi-driver"
+      ]
     }
 
     condition {

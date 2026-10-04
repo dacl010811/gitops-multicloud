@@ -48,6 +48,7 @@
       "Action": [
         "iam:CreateRole",
         "iam:DeleteRole",
+        "iam:UpdateAssumeRolePolicy",
         "iam:GetRole",
         "iam:ListRoles",
         "iam:AttachRolePolicy",
