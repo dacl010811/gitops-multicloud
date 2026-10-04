@@ -55,7 +55,7 @@ Las demos anteriores probaron el **bucle GitOps interno** (commit → pipeline �
 | 5. IRSA (OIDC + rol) | | | ✅ COMPLETADA | PASO 5.0 (política ampliada vía web como root, statement IAMForIRSA) ✅ → apply: 4 added. Rol sri-eks-cluster-alb-controller + OIDC provider (su id = id del endpoint del cluster) + policy oficial v2.7.2 |
 | 6. Helm: LB Controller | | | ✅ COMPLETADA | 1ª pasada: CrashLoopBackOff (chart v3.5.0 sin vpcId → IMDS inalcanzable desde pod) → fix en script (VPC por API + --set vpcId) → re-ejecución: rollout OK, 2 pods Running 1/1, RS 7474987bc7 |
 | 7. Ingress → ALB | | | ✅ COMPLETADA | Push → ArgoCD sync → ADDRESS vacío → FailedBuildModel (ec2:DescribeRouteTables — drift policy v2.7.2 vs controller v3.5.0) → fix versionado → ALB k8s-srifactu-srifactu-a08031345f-58486945.us-east-1.elb.amazonaws.com |
-| 8. Carga + HPA en vivo | | | ⬜ | |
+| 8. Carga + HPA en vivo | | | ✅ COMPLETADA | Umbral 5% (tras fix de indentación c0b0748): escalada 3→7→10 con +2/60s, CPU convergiendo 53→33→29%; target group con 9-10 IPs de PODS healthy (target-type ip registrando al vuelo; verificado vía nueva política ELBReadOnly) |
 | 9. Cierre FinOps | | | ⬜ | |
 
 ---
