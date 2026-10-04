@@ -18,7 +18,10 @@ resources:
   # - ingress.yaml
   # SESION SECRETOS (2026-10-05): ACTIVADO — requiere CSI Driver + provider
   # AWS instalados (scripts/bootstrap-secrets-csi-eks.sh) y parametros SSM
-  # /sri-facturacion/* (iac/aws/secrets-csi). Revertido en el cierre del dia.
+  # /sri-facturacion/* (iac/aws/secrets-csi). CIERRE: se MANTIENE activo —
+  # la proxima sesion re-crea el modulo secrets-csi y el driver ANTES de
+  # que ArgoCD sincronice; pods en ContainerCreating hasta entonces son
+  # esperados (sin Ingress activo no hay ALB que huerfane).
 - secrets-store-ssm.yaml
 
 # Sobrescribe el ConfigMap base con los valores especificos de AWS EKS

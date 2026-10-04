@@ -42,11 +42,19 @@ helm repo update secrets-store-csi-driver >/dev/null
 # que creaba un CSIDriver fantasma secrets-store.csi.x-k8s.io — eliminado.
 echo "==> PASO 2. Secrets Store CSI Driver v${DRIVER_CHART_VERSION}"
 echo "    syncSecret.enabled=true  -> secretObjects (sincroniza a Secret nativo de k8s)"
+echo "    tokenRequests audience sts.amazonaws.com -> el kubelet proyecta el token IRSA del pod"
 echo "    anotacion IRSA en el SA del propio chart (no creamos SA custom)"
+# INCIDENTE 4-bis (2026-10-05): sin tokenRequests el mount falla en la capa
+# federativa con 'CSI token error: serviceAccount.tokens not provided -
+# ensure tokenRequests is configured in CSIDriver spec' — el provider no
+# recibe el token del SA del pod y no puede asumir el rol IRSA. Estándar AWS
+# para EKS (doc oficial del provider).
 if ! helm upgrade --install secrets-store-csi-driver secrets-store-csi-driver/secrets-store-csi-driver \
       --namespace "$DRIVER_NS" \
       --version "$DRIVER_CHART_VERSION" \
       --set syncSecret.enabled=true \
+      --set tokenRequests[0].audience="sts.amazonaws.com" \
+      --set tokenRequests[0].expirationSeconds=86400 \
       --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ROLE_ARN"; then
   echo "ERROR: fallo el install. Verifica versiones disponibles:"
   helm search repo secrets-store-csi-driver/secrets-store-csi-driver --versions | head -5
