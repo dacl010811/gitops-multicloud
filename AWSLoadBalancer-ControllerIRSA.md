@@ -259,6 +259,8 @@ curl -s -H "Host: api.sri.ec.gob.ec" "http://$ALB/api/v1/version"
 
 ## BLOQUE 3 — Pruebas de carga con HPA en vivo (~30–45 min, $0 adicional)
 
+**Incidente de secuencia (sesión 2026-10-04) — bug del asistente + regla de oro del render local:** al descomentar el `hpa-patch.yaml` en el kustomization, el asistente mantuvo la indentación de 2 espacios del bloque comentado (`  - path:`) mientras el item hermano `configmap-patch` vive a nivel 0 (`- path:`). YAML rechaza items de una misma secuencia con indentaciones distintas → `kubectl kustomize` falló con `yaml: line 29: did not find expected key`, el commit `325386f` subió el overlay roto y ArgoCD quedó en `sync=Unknown` con `rev` mostrando el branch sin SHA resuelto (no puede hacer build del render). Síntoma en vivo: el HPA seguía en 70% pese al push. Fix: reindentar el item a nivel 0. **Lecciones triples:** (1) *validar el render local (`kubectl kustomize <overlay>`) antes de CADA commit de manifiestos* — la convención existía y aquí se cumplió a la inversa: el error se descubrió después del push; (2) **hueco del pipeline**: el workflow CI solo valida `app/**` (pytest), así que un commit que rompe el render GitOps pasó sin job — mejora registrada para el merge final: step de `kustomize build` de ambos overlays; (3) el `sync=Unknown` de ArgoCD es la firma de "el render no compila": ante un Unknown, el primer comando es el build local, no el cluster.
+
 ### El problema honesto (por qué existe el PASO C.1)
 
 La app solo expone endpoints `async` baratos (`/health`, `/api/v1/version`): su CPU por request es despreciable. Con el umbral del HPA al **70% de 250m**, ninguna carga de `hey` va a escalar los pods. Dos caminos:
