@@ -239,6 +239,20 @@
       "Resource": [
         "arn:aws:ecr:us-east-1:*:repository/*"
       ]
+    },
+    {
+      "Sid": "ELBReadOnlyForGitOps",
+      "Effect": "Allow",
+      "Action": [
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeRules",
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetHealth",
+        "elasticloadbalancing:DescribeTags"
+      ],
+      "Resource": "*"
     }
   ]
 }

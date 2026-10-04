@@ -24,12 +24,13 @@ patches:
   target:
     kind: ConfigMap
     name: sri-facturacion-config
-  # UMBRAL DIDACTICO (Bloque 3, PASO C.1): se activa junto al commit del
-  # hpa-patch.yaml para la demo de carga; se revierte en el cierre.
-  # - path: hpa-patch.yaml
-  #   target:
-  #     kind: HorizontalPodAutoscaler
-  #     name: sri-facturacion-service-hpa
+  # UMBRAL DIDACTICO (Bloque 3, PASO C.1): ACTIVADO para la demo de carga
+  # (umbral 5% en vez de 70%: los endpoints async de la app no generarian
+  # carga CPU real; se revierte en el cierre del Bloque 4).
+  - path: hpa-patch.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: sri-facturacion-service-hpa
   # TEMPORAL: el parche de secretos monta parametros de SSM via CSI Driver
   # (no instalado). NOTA-BUG: su target apunta a 'sri-facturacion-service'
   # pero el Deployment real es 'sri-facturacion-service-deployment' -> jamas
