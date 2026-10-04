@@ -8,11 +8,11 @@ namespace: sri-facturacion
 
 resources:
 - ../../bases
-  # TEMPORAL (sesion flujo GitOps EKS): ingress.yaml queda fuera porque requiere
-  # el AWS Load Balancer Controller (no instalado). Sin controller, el ALB nunca
-  # se provisiona y ArgoCD quedaria en Progressing eterno (misma leccion que
-  # AGIC en Azure). Se restaura en la sesion dedicada a ingress.
-  # - ingress.yaml
+  # RESTAURADO (sesion 2026-10-03, Ingress + IRSA): primero se instalo el
+  # AWS Load Balancer Controller con identidad IRSA (iac/aws/lb-controller)
+  # y recien entonces se habilito aqui. Habilitarlo sin controller dejaba
+  # ArgoCD en Progressing eterno (misma leccion que AGIC en Azure).
+- ingress.yaml
   # TEMPORAL: secrets-store-ssm.yaml requiere Secrets Store CSI Driver +
   # provider AWS (no instalados) y placeholders de SSM. Sesion dedicada a
   # secretos lo restaura junto a deployment-secrets-patch.yaml.
@@ -24,6 +24,12 @@ patches:
   target:
     kind: ConfigMap
     name: sri-facturacion-config
+  # UMBRAL DIDACTICO (Bloque 3, PASO C.1): se activa junto al commit del
+  # hpa-patch.yaml para la demo de carga; se revierte en el cierre.
+  # - path: hpa-patch.yaml
+  #   target:
+  #     kind: HorizontalPodAutoscaler
+  #     name: sri-facturacion-service-hpa
   # TEMPORAL: el parche de secretos monta parametros de SSM via CSI Driver
   # (no instalado). NOTA-BUG: su target apunta a 'sri-facturacion-service'
   # pero el Deployment real es 'sri-facturacion-service-deployment' -> jamas

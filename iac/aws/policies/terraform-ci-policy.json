@@ -61,7 +61,30 @@
       ],
       "Resource": [
         "arn:aws:iam::*:role/sri-eks-cluster-eks-cluster-role",
-        "arn:aws:iam::*:role/sri-eks-cluster-eks-node-role"
+        "arn:aws:iam::*:role/sri-eks-cluster-eks-node-role",
+        "arn:aws:iam::*:role/sri-eks-cluster-alb-controller"
+      ]
+    },
+    {
+      "Sid": "IAMForIRSA",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateOpenIDConnectProvider",
+        "iam:GetOpenIDConnectProvider",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:CreatePolicy",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:TagPolicy"
+      ],
+      "Resource": [
+        "arn:aws:iam::*:oidc-provider/oidc.eks.us-east-1.amazonaws.com/*",
+        "arn:aws:iam::*:policy/AWSLoadBalancerControllerIAMPolicy"
       ]
     },
     {

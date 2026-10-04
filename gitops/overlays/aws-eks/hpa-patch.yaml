@@ -1,0 +1,8 @@
+# UMBRAL DIDACTICO (Bloque 3, PASO C.1): baja el target de CPU del HPA de 70%
+# a 5% para que la demo de carga escale con endpoints baratos (/health es
+# async y no quema CPU suficiente para acercarse al 70% de 250m).
+# JSON6902: /spec/metrics/0 = CPU (primer elemento de hpa.yml base).
+# REVERTIR al cerrar la sesion (Bloque 4, paso 1) o al destruir el cluster.
+- op: replace
+  path: /spec/metrics/0/resource/target/averageUtilization
+  value: 5
