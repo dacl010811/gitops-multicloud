@@ -23,6 +23,10 @@ resources:
   # que ArgoCD sincronice; pods en ContainerCreating hasta entonces son
   # esperados (sin Ingress activo no hay ALB que huerfane).
 - secrets-store-ssm.yaml
+# CIERRE #4-ter (2026-10-05): SA dedicado con la anotacion del rol — el
+# provider AWS lee la anotacion del SA DEL POD para asumir el rol IRSA
+# (sin esto el mount falla con 'Failed to fetch parameters from all regions').
+- serviceaccount.yaml
 
 # Sobrescribe el ConfigMap base con los valores especificos de AWS EKS
 patches:

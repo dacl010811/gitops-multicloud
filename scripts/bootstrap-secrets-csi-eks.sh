@@ -43,18 +43,22 @@ helm repo update secrets-store-csi-driver >/dev/null
 echo "==> PASO 2. Secrets Store CSI Driver v${DRIVER_CHART_VERSION}"
 echo "    syncSecret.enabled=true  -> secretObjects (sincroniza a Secret nativo de k8s)"
 echo "    tokenRequests audience sts.amazonaws.com -> el kubelet proyecta el token IRSA del pod"
-echo "    anotacion IRSA en el SA del propio chart (no creamos SA custom)"
+echo "    tokenRequests audience pods.eks.amazonaws.com -> fut. modo EKS Pod Identity (doc oficial)"
+echo "    anotacion IRSA en el SA del chart -> FALLBACK legacy (la identidad real es el SA del pod)"
 # INCIDENTE 4-bis (2026-10-05): sin tokenRequests el mount falla en la capa
 # federativa con 'CSI token error: serviceAccount.tokens not provided -
 # ensure tokenRequests is configured in CSIDriver spec' — el provider no
 # recibe el token del SA del pod y no puede asumir el rol IRSA. Estándar AWS
-# para EKS (doc oficial del provider).
+# para EKS: el README del provider exige AMBAS audiencias (la de
+# pods.eks.amazonaws.com la usa el modo EKS Pod Identity — add-on que este
+# proyecto NO activa; se declara por alineacion con la doc oficial).
 if ! helm upgrade --install secrets-store-csi-driver secrets-store-csi-driver/secrets-store-csi-driver \
       --namespace "$DRIVER_NS" \
       --version "$DRIVER_CHART_VERSION" \
       --set syncSecret.enabled=true \
       --set tokenRequests[0].audience="sts.amazonaws.com" \
       --set tokenRequests[0].expirationSeconds=86400 \
+      --set tokenRequests[1].audience="pods.eks.amazonaws.com" \
       --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ROLE_ARN"; then
   echo "ERROR: fallo el install. Verifica versiones disponibles:"
   helm search repo secrets-store-csi-driver/secrets-store-csi-driver --versions | head -5
@@ -62,10 +66,14 @@ if ! helm upgrade --install secrets-store-csi-driver secrets-store-csi-driver/se
   exit 1
 fi
 
-echo "==> PASO 2b. Anotacion IRSA explicita en el SA del chart"
+echo "==> PASO 2b. Anotacion IRSA explicita en el SA del chart (FALLBACK legacy)"
 # Leccion (estilo vpcId del 2026-10-04): el --set de anotaciones anidadas es
-# fragil; el annotate de kubectl es determinista e idempotente. Sin esta
-# anotacion el provider no tiene identidad (GetParameter -> AccessDenied).
+# fragil; el annotate de kubectl es determinista e idempotente.
+# OJO (cierre #4-ter): esta anotacion es solo el FALLBACK. La identidad REAL
+# del montaje la aporta el SA DEL POD de la app
+# (gitops/overlays/aws-eks/serviceaccount.yaml, anotado con el mismo rol):
+# el provider lee ESA anotacion via API k8s y asume el rol con el token
+# proyectado del pod. El trust de iac/aws/secrets-csi/main.tf lista ambos.
 kubectl annotate sa secrets-store-csi-driver -n kube-system "eks.amazonaws.com/role-arn=$ROLE_ARN" --overwrite
 
 echo "==> PASO 3. AWS provider (DaemonSet: inyecta el binario del provider en cada pod del driver)"

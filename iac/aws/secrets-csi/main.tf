@@ -71,16 +71,25 @@ resource "aws_iam_openid_connect_provider" "eks" {
 }
 
 # ============================================
-# Trust policy: QUIEN consume este rol.
+# Trust policy: QUIEN puede asumir este rol (IRSA).
 #
-# INCIDENTE-LECCION (2026-10-05): la 1ª version apuntaba SOLO al SA del
-# driver (kube-system/secrets-store-csi-driver) — ERROR DE DISEÑO: el
-# provider del CSI NO usa la identidad del driver al montar; usa el TOKEN
-# del ServiceAccount del POD QUE MONTA el volumen (la app). Sin trust al
-# SA de la app, el provider cae a las credenciales del NODO (node role,
-# sin ssm:GetParameter) -> MountVolume.SetUp AccessDenied -> ContainerCreating
-# eterno. Trust DUAL: la app (sri-facturacion/default) consume el rol para
-# leer parametros; el driver queda cubierto por si acaso.
+# MECANISMO VERIFICADO (docs oficiales del provider AWS; installer v3.1.4;
+# sesion de cierre del incidente #4-ter): el provider NO asume el rol con la
+# identidad del driver. Al montar, resuelve el rol leyendo la anotacion
+# eks.amazonaws.com/role-arn del SA DEL POD QUE MONTA el volumen (el
+# ClusterRole del installer da get serviceaccounts exactamente para eso) y
+# lo asume con el TOKEN proyectado de ese pod (CSIDriver tokenRequests, aud
+# sts.amazonaws.com) via sts:AssumeRoleWithWebIdentity. Consecuencia: el
+# trust DEBE listar el sub del SA del POD; sin la anotacion en ESE SA el rol
+# es irresoluble (root cause #4-ter: el pod usaba el SA 'default' sin
+# anotacion -> 'Failed to fetch parameters from all regions').
+#
+# IDENTIDADES:
+#  - sri-facturacion:sri-facturacion-sa   -> SA dedicado del overlay aws-eks
+#    (gitops/overlays/aws-eks/serviceaccount.yaml, anotado con ESTE rol).
+#    Es la identidad REAL del montaje.
+#  - kube-system:secrets-store-csi-driver -> fallback legacy del provider
+#    (cadena propia del driver si el pod no aportara token/rol).
 # ============================================
 data "aws_iam_policy_document" "irsa_trust" {
   statement {
@@ -96,7 +105,7 @@ data "aws_iam_policy_document" "irsa_trust" {
       test     = "StringEquals"
       variable = "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub"
       values = [
-        "system:serviceaccount:sri-facturacion:default",
+        "system:serviceaccount:sri-facturacion:sri-facturacion-sa",
         "system:serviceaccount:kube-system:secrets-store-csi-driver"
       ]
     }

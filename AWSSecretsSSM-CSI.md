@@ -102,7 +102,7 @@ curl -s localhost:5000/api/v1/version
 
 | Archivo | Contenido |
 |---|---|
-| `main.tf` | Backend `aws/secrets-csi.tfstate` · OIDC provider del cluster (mismo patrón que lb-controller) · rol `sri-eks-cluster-secrets-csi` con trust al SA `kube-system:secrets-store-csi-driver` · política desde `iam_policy.json` local (lección file() de ayer) · **3 parámetros SSM SecureString con `random_password`** |
+| `main.tf` | Backend `aws/secrets-csi.tfstate` · OIDC provider del cluster (mismo patrón que lb-controller) · rol `sri-eks-cluster-secrets-csi` con **trust dual** (SA del pod `sri-facturacion-sa` + SA del driver como fallback — ver Bloque 3.5) · política desde `iam_policy.json` local (lección file() de ayer) · **3 parámetros SSM SecureString con `random_password`** |
 | `variables.tf` | cluster_name, region, valores demo (DB_USER/DB_HOST con default no sensible; la contraseña **nace en runtime**) |
 | `outputs.tf` | `secrets_csi_role_arn`, `oidc_provider_arn`, `parameter_names` (NUNCA valores) |
 | `iam_policy.json` | `ssm:GetParameter(s)(ByPath)` scoped a `/sri-facturacion/*` + `kms:Decrypt` (llave administrada `aws/ssm`) |
@@ -182,6 +182,7 @@ kubectl get pods -n kube-system | grep -E "secrets-store|provider-aws"
 |---|---|---|
 | **#7a** | `deployment-secrets-patch.yaml` | `metadata.name` → `sri-facturacion-service-deployment` |
 | **#7b (nuevo)** | ídem | **container** `name` → `sri-facturacion-service-deployment` (sin esto el SMP añadiría un 2º container) |
+| **#7c (cierre #4-ter)** | `serviceaccount.yaml` **(nuevo)** + ídem patch | SA dedicado `sri-facturacion-sa` **anotado con el rol** (el provider lee ESA anotación — no la del driver) + `serviceAccountName` en el pod |
 | SPC | `secrets-store-ssm.yaml` | `secretsmanager` + jmesPath → **`ssmparameter` ×3** (`/sri-facturacion/DB_*`), secretObjects intactos |
 | Overlay | `kustomization.yaml` | Descomentar `- secrets-store-ssm.yaml` + el patch (indentación a nivel 0 — **regla de oro de ayer**) |
 
@@ -193,7 +194,11 @@ kubectl get pods -n kube-system | grep -E "secrets-store|provider-aws"
 kubectl kustomize gitops/overlays/aws-eks > /tmp/render-aws.yaml
 grep -c "SecretProviderClass" /tmp/render-aws.yaml   # Esperado: ≥1
 grep -c "sri-facturacion-service-deployment" /tmp/render-aws.yaml   # ≥2 (deployment + container)
-grep -c "kind: Deployment" /tmp/render-aws.yaml     # Esperado: 1 (¡NO 2! si saliera 2, el patch creó un recurso)
+grep -c "^kind: Deployment" /tmp/render-aws.yaml    # Esperado: 1 — ANCLADO a columna 0
+# OJO: sin el ancla ^ da 2 y NO es bug (incidente didáctico 2026-10-05):
+# el scaleTargetRef de hpa.yml contiene también la línea "    kind: Deployment"
+# indentada (referencia al Deployment objetivo, no un recurso). El ancla valida
+# además que no hay documentos extra (todos los kind reales van a columna 0).
 ```
 
 ## Fase 7.2 — Commit + push → ArgoCD sync
@@ -226,6 +231,61 @@ grep -ri "$(kubectl get secret sri-facturacion-db -n sri-facturacion -o jsonpath
 # (e) La app sigue viva:
 kubectl port-forward -n sri-facturacion svc/sri-facturacion-service-svc 5000:5000 &
 curl -s localhost:5000/health
+```
+
+---
+
+# BLOQUE 3.5 — SESIÓN 2: root cause del incidente #4-ter y cierre (💰 $0 sobre cluster vivo)
+
+> **Root cause verificado (docs oficiales del provider AWS, installer v3.1.4):** el provider del CSI **no asume el rol con la identidad del driver**. Al montar, resuelve el rol leyendo la anotación `eks.amazonaws.com/role-arn` **del SA del POD que monta el volumen** (vía API de Kubernetes — el ClusterRole del installer da `get serviceaccounts` exactamente para eso) y lo asume con el **token proyectado de ese pod** (CSIDriver `tokenRequests`, aud `sts.amazonaws.com`) vía `sts:AssumeRoleWithWebIdentity`. El pod usaba el SA **`default` sin anotación** → rol irresoluble → `Failed to fetch parameters from all regions`. Evidencia: README oficial ("the provider lookups … the role ARN associated with the service account"), `ExampleDeployment-IRSA.yaml` (SA dedicado) y `ExampleSecretProviderClass-IRSA.yaml` (**sin `roleArn` en la SPC**).
+
+## 3.5.1 — Fixes (aplicados en el repo antes de ejecutar)
+
+| Fix | Archivo | Cambio |
+|---|---|---|
+| SA del pod | `gitops/overlays/aws-eks/serviceaccount.yaml` **(nuevo)** | SA dedicado `sri-facturacion-sa` anotado con `arn:aws:iam::053044806920:role/sri-eks-cluster-secrets-csi` |
+| Pod → SA | `gitops/overlays/aws-eks/deployment-secrets-patch.yaml` | `serviceAccountName: sri-facturacion-sa` |
+| Trust | `iac/aws/secrets-csi/main.tf` | sub del trust → `system:serviceaccount:sri-facturacion:sri-facturacion-sa` (+ driver como fallback legacy) |
+| SPC | `gitops/overlays/aws-eks/secrets-store-ssm.yaml` | `region: "us-east-1"` explícita (recomendación oficial: fetch determinista) |
+| Script | `scripts/bootstrap-secrets-csi-eks.sh` | 2ª audiencia `pods.eks.amazonaws.com` en tokenRequests (doc oficial; modo Pod Identity futuro) + comentarios de fallback |
+
+## 3.5.2 — Ejecución (orden causal; el operador ejecuta)
+
+```bash
+# 0. Estado actual (solo lectura, $0): ¿cluster vivo? ¿módulo aplicado?
+aws eks describe-cluster --name sri-eks-cluster --query 'cluster.status' --output text
+aws ssm describe-parameters --query 'Parameters[?contains(Name, `sri-facturacion`)].Name' --output text
+kubectl get pods -n sri-facturacion | head -6
+cd iac/aws/secrets-csi && terraform plan    # Esperado: 1 to change (trust del rol)
+
+# 1. Trust nuevo (si AccessDenied iam:UpdateAssumeRolePolicy persiste:
+#    re-pegar la política del PASO 5.0 en consola, o terraform apply -replace="aws_iam_role.secrets_csi")
+terraform apply
+
+# 2. Overlay → render local (REGLA DE ORO) → commit → push (ArgoCD auto-sync + selfHeal)
+cd ../../..   # volver a la raiz del repo (estabamos en iac/aws/secrets-csi)
+kubectl kustomize gitops/overlays/aws-eks > /tmp/render-aws.yaml
+grep -c "sri-facturacion-sa" /tmp/render-aws.yaml        # Esperado: ≥2 (SA + pod spec)
+grep -c "kind: ServiceAccount" /tmp/render-aws.yaml      # Esperado: 1
+grep -c "^kind: Deployment" /tmp/render-aws.yaml         # Esperado: 1 — anclado (sin ^: 2 por el scaleTargetRef del HPA)
+git add gitops/overlays/aws-eks/ && git commit -m "fix(aws-eks): identidad del montaje CSI — SA dedicado anotado (root cause #4-ter)" && git push
+
+# 3. ArgoCD sincroniza y el rollout reemplaza los pods atascados:
+kubectl get pods -n sri-facturacion -w    # Esperado: nuevos pods → Running
+
+# 4. Verificación Fase 7.3 (a)-(e) — el montaje ya debe completar
+```
+
+## 3.5.3 — Diagnóstico (si algo no cierra)
+
+```bash
+# Logs del provider (README oficial) y del driver (modo fusionado v3):
+kubectl logs -n kube-system -l app=csi-secrets-store-provider-aws --tail=50
+kubectl logs -n kube-system -l app=secrets-store-csi-driver -c secrets-store --tail=50
+# Identidades en vivo:
+kubectl get sa sri-facturacion-sa -n sri-facturacion -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}'; echo
+kubectl get pod -n sri-facturacion -o jsonpath='{.items[*].spec.serviceAccountName}'; echo
+kubectl get csidriver secrets-store.csi.k8s.io -o jsonpath='{.spec.tokenRequests}'; echo
 ```
 
 ---
@@ -278,7 +338,7 @@ aws ssm describe-parameters --query 'Parameters[?contains(Name, `sri-facturacion
 | `AccessDenied: iam:UpdateAssumeRolePolicy` al cambiar el trust de un rol existente | Cambiar trust ≠ CreateRole: es una acción IAM aparte (incidente real Fase 5.1 bis) | Corto plazo: `terraform apply -replace="aws_iam_role.X"` (destruye y recrea con permisos existentes; mismo nombre → mismo ARN → anotaciones SA intactas). Largo plazo: `iam:UpdateAssumeRolePolicy` ya añadida al statement IAMForEKS del repo (aplicar en próxima pasada root) |
 | `driver name ... not found in the list of registered CSI drivers` (FailedMount, ContainerCreating eterno) | **ROOT CAUSE REAL (incidente #4, resuelto): typo del NOMBRE del driver en el patch** — el driver registrado es `secrets-store.csi.k8s.io` (SIN `x-`); el sufijo `x-k8s.io` es del GRUPO API del CRD SPC, no del driver. El registro NUNCA estuvo roto: logs del node-driver-registrar mostraban `PluginRegistered:true` y el chart sí crea su CSIDriver. Todo el camino de recrear driver-pods/CSIDriver-manual persiguió el nombre equivocado | `driver: secrets-store.csi.k8s.io` en el volumen del patch (fix en aws Y azure) + borrar el CSIDriver fantasma `kubectl delete csidriver secrets-store.csi.x-k8s.io`. Lección: `kubectl get csidrivers` (SIN nombre) lista los drivers reales — lo habría revelado en 5s; los logs del registrar son el diagnóstico de 10s que era |
 | `CSI token error: serviceAccount.tokens not provided - ensure tokenRequests is configured in CSIDriver spec` | **Capa federativa del mount (incidente #4-bis, 2026-10-05):** el CSIDriver default no pide tokens proyectados → el provider no recibe el token IRSA del SA del pod → no puede asumir el rol. El nombre del driver ya estaba resuelto (progreso de capa) | `helm upgrade --set tokenRequests[0].audience=sts.amazonaws.com --set tokenRequests[0].expirationSeconds=86400` (ya en el PASO 2 del script) → re-run del script (re-anota el SA) → recrear el pod atascado. Verificación: `kubectl get csidriver secrets-store.csi.k8s.io -o yaml | grep -A3 tokenRequests` |
-| `Failed to fetch parameters from all regions` | **PENDIENTE (incidente #4-ter, cierre 2026-10-05):** el mount ya atraviesa nombre ✓ / registro ✓ / tokenRequests ✓ y el provider INTENTA el GetParameter pero falla. Hipótesis para la próxima sesión: (a) leer logs del driver-pod (contenedor secrets-store) buscando el error crudo de credenciales/STS; (b) verificar la política del rol (ssm:GetParameter en us-east-1, cuenta 053044806920); (c) recordar que el provider usa la región del IMDS del nodo (us-east-1, donde viven los parámetros) | Abrir con logs crudos del provider antes de tocar nada: `kubectl logs -n kube-system -l app=secrets-store-csi-driver -c secrets-store --tail=50` |
+| `Failed to fetch parameters from all regions` | **RESUELTO (incidente #4-ter; sesión 2 de cierre 2026-10-05): ROOT CAUSE = el provider AWS resuelve el rol leyendo la anotación `eks.amazonaws.com/role-arn` del SA DEL POD que monta el volumen (no del driver) vía API k8s, y lo asume con el token proyectado de ese pod. El pod usaba el SA `default` SIN anotación → rol irresoluble → AccessDenied en el fetch.** Evidencia: README oficial del provider ("the provider lookups … the role ARN associated with the service account"), ClusterRole del installer v3.1.4 con `get serviceaccounts`, y ejemplo IRSA oficial con SA dedicado + SPC SIN `roleArn` | Fix: SA dedicado `sri-facturacion-sa` anotado en el overlay + `serviceAccountName` en el patch del deployment + trust con su sub + `region` explícita en la SPC (ver Bloque 3.5). Diagnóstico: `kubectl logs -n kube-system -l app=csi-secrets-store-provider-aws --tail=50` (provider) y `-l app=secrets-store-csi-driver -c secrets-store` (driver/fusionado) |
 | Pod nace pero Secret `sri-facturacion-db` no aparece | syncSecret off o rotación no disparada | El Secret se crea al primer montaje del pod; recrear pods si el driver se instaló después |
 | ArgoCD `sync=Unknown` tras commit | ¡La lección de AYER! Render roto | `kubectl kustomize` local ANTES de pushear, siempre |
 
@@ -287,7 +347,7 @@ aws ssm describe-parameters --query 'Parameters[?contains(Name, `sri-facturacion
 1. **¿Por qué SSM Parameter Store y no Secrets Manager?** Standard tier es $0 (Secrets Manager $0.40/secreto/mes); el patrón de consumo (CSI + IRSA) es idéntico para ambos — decisión FinOps sin renunciar al patrón. Si el proyecto necesitara rotación automática nativa o cross-account, Secrets Manager entra como upgrade documentado.
 2. **¿Por qué no HashiCorp Vault?** (→ ADR-003) Los almacenes nativos gestionados + patrón unificado de consumo; Vault self-hosted sería un servidor más que operar (HA, unseal, backups) con SPOF cross-cloud, desproporcionado para 1 equipo y 2 nubes. La portabilidad está en el patrón (CSI + identidad gestionada), no en el vendor.
 3. **¿Dónde nace la contraseña y dónde vive?** En runtime (`random_password` en el apply) → SSM SecureString (cifrada at-rest con KMS `aws/ssm`). En Git: NUNCA (auditado con grep en Fase 7.3d). El state la contiene también — cifrado en S3; riesgo documentado y mitigado con `encrypt=true`.
-4. **¿Qué identidades participan y qué puede leer cada una?** El SA `secrets-store-csi-driver` asume el rol `sri-eks-cluster-secrets-csi` (IRSA) que solo puede `GetParameter*` sobre `/sri-facturacion/*`. `terraform-ci` puede además Put/Delete sobre ese path. Root queda para lo privilegiado (editar políticas).
+4. **¿Qué identidades participan y qué puede leer cada una?** El SA **del pod de la app** (`sri-facturacion-sa`, anotado con el rol) es la identidad del montaje: el provider lee esa anotación vía API k8s y asume `sri-eks-cluster-secrets-csi` con el token proyectado del pod (IRSA + `tokenRequests`). El rol solo puede `GetParameter*` sobre `/sri-facturacion/*`. El SA del driver queda como fallback legacy. `terraform-ci` puede además Put/Delete sobre ese path. Root queda para lo privilegiado (editar políticas).
 5. **¿Cómo llega el secreto al proceso?** Dos vías simultáneas: (a) volumen CSI montado como archivos (kubelet→provider gRPC→SSM); (b) `secretObjects` sincroniza a un Secret nativo que el pod consume vía `envFrom`. Ambas audibles por CloudTrail (`GetParameter` firmado por el rol IRSA).
 6. **¿Qué pasa si roto el parámetro en SSM?** El volumen refleja el cambio en el próximo re-montaje (pods nuevos); el Secret nativo se sincroniza con la rotación del driver. Los pods existentes mantienen el valor viejo hasta recrearse — patrón 12-factor: roto → rollout.
 7. **¿Cómo escala esto cuando el HPA agrega 10 pods?** Cada pod nuevo monta su volumen y el provider hace `GetParameter` con el rol IRSA — no hay pre-carga niSidecar compartido: el patrón escala horizontal sin cambios.
