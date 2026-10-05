@@ -67,8 +67,15 @@ kubectl get nodes    # Esperado: 3 Ready (t3.medium)
 ## Fase 3 — ArgoCD (~3 min, $0)
 
 ```bash
-helm repo add argo https://argoproj.github.io/argo-helm   # si no está
-helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace --server-side
+# Bootstrap MANUAL de plataforma (fuera de Terraform) — metodo de TODOS los
+# guiones anteriores (DEMO_AWS_GITOPS_JURADO.md F3, GITOPS V2-AWS.md):
+# manifold OFICIAL install.yaml, NO helm (corregido 2026-10-05: la version
+# previa de este guion introdujo helm — desviacion del estandar del proyecto;
+# la narrativa es bootstrap manual reproducible, sin releases helm flotantes).
+# --server-side obligatorio: el CRD applicationsets supera los 256KB de la
+# anotacion last-applied y el apply cliente falla.
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml --server-side
 kubectl get pods -n argocd -w   # Esperado: 7 pods Running
 ```
 

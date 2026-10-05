@@ -100,11 +100,17 @@ aws ecr describe-images --repository-name sri-facturacion-service \
 ### PASO 0.5 — La plataforma permanente COMPLETA: federación OIDC (15 seg)
 
 ```bash
-aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[].Arn" --output text
+# FIX 2026-10-04 (verificado en vivo): terraform-ci es least-privilege:
+# no tiene iam:ListOpenIDConnectProviders (auditoria generica) ni get sobre
+# providers fuera de EKS. El provider se demuestra DESDE EL ROL: su trust
+# policy lo referencia como principal Federated (get-role si esta permitido
+# con Resource "*"). Menos comandos, misma evidencia.
 aws iam get-role --role-name github-actions-ecr-push --query "Role.Arn" --output text
+aws iam get-role --role-name github-actions-ecr-push \
+  --query "Role.AssumeRolePolicyDocument.Statement[0].Principal.Federated" --output text
 ```
 
-**Esperado:** `arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com` y `arn:aws:iam::${ACCOUNT_ID}:role/github-actions-ecr-push`. **Costo: $0** (lecturas IAM gratis).
+**Esperado:** `arn:aws:iam::${ACCOUNT_ID}:role/github-actions-ecr-push` y (leído de la trust del propio rol) `arn:aws:iam::${ACCOUNT_ID}:oidc-provider/token.actions.githubusercontent.com`. **Costo: $0** (lecturas IAM gratis).
 
 **NOTA — por qué este script NO se ejecuta en la demo (contraste con Azure):** `scripts/bootstrap-github-oidc-aws.sh` se ejecutó UNA sola vez (como root, bootstrap humano privilegiado) porque su sujeto —el rol que GitHub Actions asume— es permanente y ajeno al ciclo de vida del cluster: la demo solo lo VERIFICA. El script gemelo de Azure (`bootstrap-acr-rbac-azure.sh`) sí se re-ejecuta en cada recreate porque su sujeto —la kubelet identity— muere con el cluster (fue el incidente didáctico de la demo Azure). Dos scripts, dos ciclos de vida — y el guard del script AWS (aborta si la sesión no es root) hace que ejecutarlo en la demo fallara por diseño: la identidad de la demo es `terraform-ci`, no root.
 
