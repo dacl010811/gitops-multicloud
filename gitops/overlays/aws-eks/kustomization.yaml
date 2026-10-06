@@ -6,8 +6,6 @@ metadata:
 
 namespace: sri-facturacion
 
-resources:
-- ../../bases
   # RESTAURADO (sesion 2026-10-03, Ingress + IRSA): primero se instalo el
   # AWS Load Balancer Controller con identidad IRSA (iac/aws/lb-controller)
   # y recien entonces se habilito aqui. Habilitarlo sin controller dejaba
@@ -22,18 +20,15 @@ resources:
   # la proxima sesion re-crea el modulo secrets-csi y el driver ANTES de
   # que ArgoCD sincronice; pods en ContainerCreating hasta entonces son
   # esperados (sin Ingress activo no hay ALB que huerfane).
-- secrets-store-ssm.yaml
 # CIERRE #4-ter (2026-10-05): SA dedicado con la anotacion del rol — el
 # provider AWS lee la anotacion del SA DEL POD para asumir el rol IRSA
 # (sin esto el mount falla con 'Failed to fetch parameters from all regions').
+resources:
+- ../../bases
+- secrets-store-ssm.yaml
 - serviceaccount.yaml
 
 # Sobrescribe el ConfigMap base con los valores especificos de AWS EKS
-patches:
-- path: configmap-patch.yaml
-  target:
-    kind: ConfigMap
-    name: sri-facturacion-config
   # UMBRAL DIDACTICO (Bloque 3): REVERTIDO en el cierre (2026-10-04) — la
   # demo de carga termino; el umbral real (70%) vive en bases/hpa.yml.
   # - path: hpa-patch.yaml
@@ -44,6 +39,11 @@ patches:
   # y container name del patch apuntan a sri-facturacion-service-deployment
   # (el nombre REAL del base; sin el fix del container name, el strategic
   # merge anadiria un segundo container en vez de parchear el existente).
+patches:
+- path: configmap-patch.yaml
+  target:
+    kind: ConfigMap
+    name: sri-facturacion-config
 - path: deployment-secrets-patch.yaml
   target:
     kind: Deployment
@@ -57,7 +57,7 @@ patches:
 images:
 - name: sri-facturacion-service
   newName: 053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
-  newTag: 69608cbcb6ee4cdab53176e88141cecaad42d2f9
+  newTag: 5ad9d6c81511671566594cd282358abddd69b0bd
 
 commonLabels:
   cloud: aws-eks
