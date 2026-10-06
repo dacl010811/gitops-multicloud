@@ -17,7 +17,8 @@
 # ============================================
 set -euo pipefail
 
-REPO_ROOT="/Users/admin/Documents/UNIR2025/MATERIAS-MASTER-2025/materias-master-devops2025/trabajofinalmaster2026/gitops-multicloud"
+# Portable: raiz del repo = carpeta padre de scripts/ (funciona en cualquier equipo/ruta)
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRIVER_NS="kube-system"
 DRIVER_CHART_VERSION="1.4.8"   # pineado (leccion 2026-10-04: chart "latest" trajo drift politica/controller)
 

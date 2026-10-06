@@ -18,7 +18,7 @@ if [[ "$CALLER_ARN" == *":user/terraform-ci" ]]; then
   exit 1
 fi
 
-cd /Users/admin/Documents/UNIR2025/MATERIAS-MASTER-2025/materias-master-devops2025/trabajofinalmaster2026/gitops-multicloud
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # portable: raiz del repo
 
 # 1. Crear el usuario (SOLO consola: sin access keys)
 aws iam create-user \
