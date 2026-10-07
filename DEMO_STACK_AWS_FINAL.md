@@ -691,6 +691,362 @@ OIDC GitHub + rol `github-actions-ecr-push` e imágenes del pipeline.
 
 ---
 
+## Guía de estudio — Mapa de temas y conceptos de la solución
+
+> **Cómo usar esta guía:** cada fila es un tema que el jurado puede tocar. "Qué debes dominar" resume
+> lo que hay que poder explicar sin apuntes; "Evidencia" indica dónde se materializa en esta demo —
+> la respuesta a "¿puede mostrarme dónde se ve eso?".
+
+### A. Plataforma AWS e infraestructura
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| A1 | **Amazon EKS** (Kubernetes gestionado) | Qué gestiona AWS (control plane, API server, etcd con HA) vs. qué gestionas tú (nodos, addons); ventaja frente a un clúster auto-gestionado (kubeadm/kops); costo por clúster-hora | FASE 1 |
+| A2 | **Node group gestionado + EC2** | Managed node group (auto-reparación, rolling node updates); 3× `t3.medium`; relación entre capacidad del nodo y `requests`/`limits` de los pods | FASE 1 (`kubectl get nodes`) |
+| A3 | **Red del clúster (VPC)** | Qué aprovisiona el módulo: VPC, subredes, security groups; diferencia entre rol del nodo y rol IRSA de un workload | FASE 1 (apply de 11 recursos) |
+| A4 | **Amazon ECR** | Registry privado; scan-on-push de vulnerabilidades; ciclo de vida (untagged a 7 días); `MUTABLE` vs `IMMUTABLE`; tags `:sha` vs `:latest` | §0.4 |
+| A5 | **SSM Parameter Store** | `SecureString` vs `String`; cifrado con KMS; jerarquía de nombres `/sri-facturacion/*`; tier standard sin costo | FASE 3 y 6 |
+| A6 | **S3 como backend de estado** | Versioning + cifrado + bloqueo público; por qué el state es el activo más sensible de IaC | §0.3 |
+| A7 | **ALB / ELBv2** | Listener, target group, health checks; **target-type ip** vs instance; modelo de cobro (horas + LCU) | FASE 7 y 8 |
+| A8 | **CloudTrail** | Event History como herramienta forense (`userName`, `errorCode`) — método real de diagnóstico del proyecto | Apéndice A (caso `sub` de GitHub) |
+
+### B. Identidad, federación y secretos
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| B1 | **IAM: usuario vs. rol vs. policy** | Credenciales de largo plazo (usuario + access key) vs. temporales (STS); trust policy (quién puede asumir) vs. policy de permisos (qué puede hacer) | §0.2 y §0.5 |
+| B2 | **Least privilege en la práctica** | Ejemplos del proyecto: sin `List*` genéricos, sin `kms:Decrypt`, sin `ecr:Delete*`; acciones acotadas por ARN | `iac/aws/policies/terraform-ci-policy.json`, FASE 6 |
+| B3 | **Federación OIDC GitHub → AWS** | Flujo: JWT emitido por GitHub → `sts:AssumeRoleWithWebIdentity` → credenciales temporales; claims `aud` y `sub` como condiciones de la trust | §0.5 |
+| B4 | **OIDC del clúster + IRSA** | Token JWT proyectado del ServiceAccount → STS → rol IAM; identidad **por pod**; anotación `eks.amazonaws.com/role-arn` | FASE 3 y 4 |
+| B5 | **El claim `sub` que GitHub migró** | Formato nuevo con IDs inmutables (`repo:owner@ID/repo@ID:ref:...`); por qué la trust lista **dos patrones** (StringLike con array = OR); diagnóstico vía CloudTrail | §0.5 (script) |
+| B6 | **KMS y quién descifra** | La cadena `kms:Decrypt` decide quién lee el secreto: el pod (IRSA) sí; `terraform-ci` no | FASE 6 ("dato de oro") |
+| B7 | **Separación de identidades** | `root` (bootstrap puntual) · `terraform-ci` (operación diaria) · `k8sweb-admin` (consola) · IRSA (workload): audit trail limpio por diseño | Regla de oro #4, §0.7 |
+| B8 | **Un OIDC provider por issuer** | Unicidad por URL en la cuenta → el módulo lb-controller **importa** el que ya creó secrets-csi | FASE 4 |
+
+### C. Terraform / IaC
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| C1 | **Backend remoto + locking** | State en S3; locking nativo `use_lockfile` (Terraform ≥1.10: sin DynamoDB); por qué el state nunca va en git | §0.3 |
+| C2 | **Un state por módulo** | registry / clúster / secrets-csi / lb-controller: blast radius acotado, vidas útiles distintas, destroys independientes y ordenados | §0.4, FASE 10 |
+| C3 | **Módulos y providers por nube** | Módulo de clúster compartido AWS/Azure; `required_providers` aislados por nube para no contaminar el grafo | `iac/modules` |
+| C4 | **`terraform import`** | Adoptar un recurso existente sin recrearlo ni fallar por duplicado (`EntityAlreadyExists`): el caso del OIDC | FASE 4 |
+| C5 | **`lifecycle.prevent_destroy`** | Guard de dos capas: el código bloquea el destroy accidental; quitarlo exige un commit deliberado | §0.4 (ECR) |
+| C6 | **Secretos que nacen en runtime** | `random_password` → SSM `SecureString`: jamás se escribe un secreto en git; dónde vive (state cifrado + SSM) | FASE 3 |
+| C7 | **`terraform.tfvars` gitignored** | Config de la cuenta que no viaja en el clon; recreación desde `.example` ("mina desactivada") | §1.1 |
+| C8 | **Idempotencia y conteos esperados** | Cada `plan/apply` declara su "esperado" (11/8/3) para detectar drift o fallos; scripts reejecutables sin daño | Todo el flujo |
+
+### D. Kubernetes y runtime
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| D1 | **Objetos base** | Deployment → ReplicaSet → Pods; Service; Namespace; rolling update | FASE 5 |
+| D2 | **HPA + metrics-server** | La API `metrics.k8s.io` alimenta al HPA; EKS **no** trae metrics-server (AKS sí); sin él: HPA ciego y ArgoCD `Degraded` con pods sanos | FASE 2 y 8 |
+| D3 | **Ingress + controlador** | El Ingress es un contrato (solo, no hace nada); el controller reconcilia ALB/TG/listeners en AWS con su rol IRSA; `vpcId` explícito evita el camino a IMDS | FASE 4 y 7 |
+| D4 | **CSI para secretos** | Driver + provider como DaemonSet por nodo; la CRD `SecretProviderClass` como contrato declarativo de montaje | FASE 3 |
+| D5 | **ServiceAccount + IRSA** | SA dedicado anotado; el provider lee la anotación del **SA del pod** (con `default` falla); fallback legacy en el SA del chart | FASE 3, Apéndice A |
+| D6 | **Secretos dentro del pod** | Montaje directo en `/mnt/secrets-store` vs. `syncSecret` (Secret nativo) → `envFrom` → variables `DB_*` | FASE 6 |
+| D7 | **`tokenRequests` doble audiencia** | `sts.amazonaws.com` (flujo STS/IRSA) y `pods.eks.amazonaws.com` (camino a identidades nativas de EKS) | FASE 3B |
+| D8 | **Access entries de EKS** | Reemplazo moderno de `aws-auth` (CONFIG_MAP legacy); modo `API_AND_CONFIG_MAP`; declarativas en Terraform y recreadas en cada apply | FASE 1 |
+| D9 | **`--server-side` al instalar ArgoCD** | El CRD `applicationsets` supera 256 KB y excede la anotación `last-applied` de kubectl | FASE 2 |
+
+### E. GitOps y CI/CD
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| E1 | **ArgoCD: Application y AppProject** | Fuente (Git), destino (clúster/namespace), proyecto; el repo implementa App-of-Apps (`root-app.yaml`) raíz → hijas | FASE 5 |
+| E2 | **Estados de sincronización** | Synced, Healthy, Progressing, Degraded, Unknown — y el caso real "Degraded con pods sanos = HPA ciego" | FASE 2 y 5 |
+| E3 | **Auto-sync + prune** | Git como fuente de verdad; prune elimina lo que sale de Git (demo OFF → el Ingress muere → el controller borra el ALB) | FASE 7 y 10 |
+| E4 | **Kustomize (bases / overlays)** | Base común + parches por nube; el modo demo se activa/desactiva comentando recursos y patches | `gitops/bases` y `gitops/overlays` |
+| E5 | **Pipeline CI/CD** | `push → pytest → build → push a ECR (:sha) → bump del manifiesto → auto-sync`; presupuesto de menos de 15 min | §0.6, FASE 9 |
+| E6 | **OIDC en GitHub Actions** | `configure-aws-credentials` + `role-to-assume`; Workflow permissions en Read/write; cero claves estáticas | §0.5 |
+| E7 | **Tags inmutables** | `:sha` es el contrato pipeline↔overlay; `:latest` es solo puntero flotante | §0.4 y §0.6 |
+| E8 | **`[skip ci]`** | El bump de tag que hace el propio pipeline no debe re-disparar el pipeline (evita el bucle) | FASE 9 |
+
+### F. FinOps y operación
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| F1 | **El "reloj" de facturación** | Qué recurso cobra y desde cuándo ($0.22/h desde la FASE 1); costo total de la sesión ≈$0.8-1.2 | Apéndice C |
+| F2 | **Orden de destroy** | Demo OFF → ALB verificado en 0 → módulos (inverso al alta) → clúster; por qué el orden es una dependencia causal | FASE 10 |
+| F3 | **Huérfanos** | El ALB zombi factura indefinidamente si el clúster muere con el Ingress vivo (el controller vivía dentro del clúster: nadie lo borra) | Regla de oro #2 |
+| F4 | **Permanente vs. efímero** | Plataforma base que sobrevive (usuario, bucket, ECR, OIDC GitHub, imagen) vs. efímero que muere (clúster, roles IRSA, SSM, ALB) | FASE 0 vs. FASE 10 |
+| F5 | **Verificación post-destroy** | Checklist: `ResourceNotFound` (EKS), `elbv2` = 0, `NoSuchEntity` (roles IRSA), SSM vacío | FASE 10.3 |
+
+### G. Aplicación y calidad
+
+| # | Tema | Qué debes dominar | Evidencia |
+|---|---|---|---|
+| G1 | **Microservicio FastAPI** | Endpoints `/health` (probes de Kubernetes) y `/api/v1/version` (la versión visible demuestra el GitOps completo); configuración por variables de entorno; async y liviano en CPU | FASE 6 y 9 |
+| G2 | **Tests como puerta de calidad** | `pytest` corre ANTES del build: la imagen solo se publica si los tests pasan (`app/tests`) | §0.6, FASE 9 |
+
+**Fuentes públicas para profundizar:** AWS (EKS User Guide: IRSA y access entries; SSM; ELBv2) · Terraform (backend S3, `import`, `prevent_destroy`, `random_password`) · Kubernetes (HPA, ServiceAccounts, Secrets, CSI) · kubernetes-sigs (secrets-store-csi-driver, aws-load-balancer-controller) · ArgoCD (Application, AppProject, auto-sync) · Kustomize (bases/overlays).
+
+---
+
+## Preguntas y respuestas — Defensa ante el jurado
+
+> Preguntas probables con respuestas modelo, agrupadas por temática. Las referencias (FASE n, §0.x,
+> Apéndice) permiten localizar la evidencia dentro de este mismo documento.
+
+### Arquitectura y decisiones de diseño
+
+**P1 — ¿Por qué GitOps y no desplegar con kubectl o un job de CI tradicional?**
+
+**R:** Porque declara Git como única fuente de verdad: todo cambio es un commit auditable y ArgoCD
+reconcilia de forma continua (si algo se altera a mano en el clúster, lo revierte). Además separa
+responsabilidades — la CI construye y publica la imagen; el CD sincroniza — y el rollback es un
+`git revert`. En la demo: la app nace del overlay (FASE 5) y el prune borra el Ingress junto con su
+ALB (FASE 10).
+
+**P2 — ¿Qué es el patrón App-of-Apps y dónde está en el proyecto?**
+
+**R:** Una Application "raíz" que gestiona otras Applications como recursos de Git: se bootstrapa
+con un solo apply y las hijas se gobiernan desde el repo. Está implementado en
+`gitops/argocd/root-app.yaml` (gobierna las Applications de AWS, Azure y monitorización); en esta
+sesión se aplican directamente `project.yaml` y `application-aws-eks.yaml`, que son hijos del
+patrón.
+
+**P3 — ¿Cómo logra el proyecto el soporte multicloud sin duplicar la aplicación?**
+
+**R:** Con una base Kustomize única (Deployment, Service, HPA…) y un overlay por nube
+(`aws-eks`, `azure-aks`) que solo parchea las diferencias: backend de secretos (SSM vs. Key Vault),
+identidad (IRSA), Ingress. La aplicación, la imagen y el pipeline son los mismos; las diferencias
+viven confinadas al overlay.
+
+**P4 — ¿Qué significa "plataforma base vs. infraestructura efímera" y por qué esa separación?**
+
+**R:** La plataforma base (usuario `terraform-ci`, bucket de state, ECR, OIDC GitHub + rol de push)
+se aprovisiona una sola vez y sobrevive a todos los ciclos; el clúster y sus satélites (roles
+IRSA, SSM, ALB) son efímeros y mueren en el cierre. Es una decisión FinOps y de riesgo: solo se
+paga por lo efímero y destruirlo es rutina, no un evento.
+
+**P5 — ¿Por qué un microservicio FastAPI y qué aporta a la demo?**
+
+**R:** Es deliberadamente simple (Python async, endpoints `/health` y `/api/v1/version`):
+suficiente para demostrar lo que importa — GitOps, secretos en runtime, elasticidad — sin que el
+código reste protagonismo. Su bajo consumo de CPU permite además exhibir la convergencia del HPA
+con carga modesta (umbral didáctico de 5%).
+
+### AWS, Terraform e identidad
+
+**P6 — ¿Por qué Terraform y por qué varios módulos con state separado?**
+
+**R:** Terraform aporta plan/apply declarativo, grafo de dependencias, módulos reutilizables (el de
+clúster sirve a AWS y Azure) e `import` para adoptar recursos existentes. El state se separa por
+dominio (registry, clúster, secrets-csi, lb-controller) para acotar el blast radius, habilitar
+destroys ordenados e independientes y respetar vidas útiles distintas: la plataforma no se
+destruye con el clúster.
+
+**P7 — ¿Cómo se protege el state de Terraform?**
+
+**R:** Vive en S3 con versioning, cifrado AES256 y bloqueo total de acceso público, con locking
+nativo (`use_lockfile`, sin DynamoDB) y jamás en git. Es el recurso más sensible de IaC: contiene
+valores derivados (incluida la `random_password`), de ahí todas las protecciones.
+
+**P8 — ¿Cómo se autentica GitHub Actions en AWS sin claves de larga vida?**
+
+**R:** Federación OIDC. El workflow solicita a GitHub un JWT; `configure-aws-credentials` invoca
+`sts:AssumeRoleWithWebIdentity`; STS valida el token contra el OIDC provider
+(`token.actions.githubusercontent.com`) y exige las condiciones de la trust (`aud` =
+`sts.amazonaws.com`, `sub` = repo/rama) para devolver credenciales temporales de
+`github-actions-ecr-push`. En GitHub solo existe un ARN como secret: cero access keys.
+
+**P9 — La trust policy acepta dos patrones de `sub`. ¿Por qué?**
+
+**R:** GitHub migró el claim `sub` a un formato con IDs inmutables (`repo:owner@ID/repo@ID:ref:...`)
+que dejó de coincidir con el patrón clásico. Se diagnosticó con CloudTrail y se solucionó
+aceptando **ambos** patrones (array en StringLike = OR): compatibilidad durante la transición, sin
+ventana de fallo.
+
+**P10 — ¿Qué es IRSA y en qué se diferencia de la federación de GitHub?**
+
+**R:** Es el mismo mecanismo (OIDC + `AssumeRoleWithWebIdentity`) con otro emisor: aquí el issuer
+es el OIDC **del clúster EKS** y el sujeto es un **ServiceAccount**. El pod recibe un token
+proyectado y STS le entrega credenciales temporales del rol anotado en su SA: identidad
+criptográfica por workload, sin credenciales estáticas dentro del contenedor. GitHub federa el
+pipeline; IRSA federa los pods.
+
+**P11 — ¿Cuántos OIDC providers hay y por qué hizo falta un `terraform import`?**
+
+**R:** Dos, con issuers distintos que conviven: el de GitHub (§0.5) y el del clúster EKS (creado
+por el módulo secrets-csi en FASE 3). Como solo puede existir **un** provider por URL de issuer,
+cuando lb-controller declara el mismo recurso se **adopta** con `terraform import` (FASE 4); sin
+el import, el apply fallaría con `EntityAlreadyExists`.
+
+**P12 — Describa la cadena completa: de Terraform a la variable de entorno del contenedor.**
+
+**R:** (1) Terraform genera `random_password` y la publica como `SecureString` en SSM (FASE 3);
+(2) el pod arranca y el driver CSI —con la identidad IRSA de su SA— pide la lectura al provider
+AWS; (3) el provider descifra vía KMS, monta los archivos en `/mnt/secrets-store` y, con
+`syncSecret`, proyecta el Secret nativo `sri-facturacion-db`; (4) `envFrom` inyecta
+`DB_HOST/DB_USER/DB_PASSWORD` en el proceso. La aplicación nunca habla con AWS: recibe variables
+de entorno.
+
+**P13 — ¿Quién puede leer el secreto en texto claro?**
+
+**R:** Dentro de las identidades de trabajo, solo el **pod** vía IRSA: `terraform-ci` es
+least-privilege y no tiene `kms:Decrypt` — puede operar toda la infraestructura pero no leer el
+valor (demostrable en FASE 6). Es defensa en profundidad: ni la identidad de automatización puede
+exfiltrar secretos.
+
+**P14 — ¿Por qué SSM Parameter Store y no Vault o Secrets Manager?**
+
+**R:** Decisión de diseño: usar el servicio nativo de cada nube (SSM en AWS; Key Vault en la pata
+Azure) en lugar de operar infraestructura adicional (Vault exigiría HA, storage y unseal) o pagar
+Secrets Manager por secreto/mes — SSM standard `SecureString` no tiene costo. El acoplamiento se
+mitiga con el patrón CSI: cambiar de backend toca al provider, no a la aplicación.
+
+**P15 — ¿Qué son las access entries y por qué se prefieren sobre `aws-auth`?**
+
+**R:** Son el mecanismo moderno de EKS para mapear identidades IAM a RBAC de Kubernetes (`aws-auth`
+/ CONFIG_MAP es legacy). En el proyecto son declarativas en Terraform (`admin_principal_arns`):
+`k8sweb-admin` recupera su acceso automáticamente tras cada destroy/apply, y el modo
+`API_AND_CONFIG_MAP` mantiene ambas vías durante la transición.
+
+**P16 — ¿Por qué el ECR está protegido con `prevent_destroy`?**
+
+**R:** Porque es plataforma base: destruirlo dejaría al pipeline y a los overlays sin registry.
+Hay doble capa: Terraform bloquea el destroy, quitarlo exige editar el código (commit deliberado
+y visible), y además el rol de push no tiene permisos `ecr:Delete*` — no puede borrar ni lo que
+publica.
+
+### Kubernetes y runtime
+
+**P17 — ¿Por qué metrics-server es imprescindible y de dónde sale?**
+
+**R:** El HPA no lee métricas por sí mismo: consume la API `metrics.k8s.io`, servida por el
+metrics-server (que agrega datos de los kubelets). EKS no lo trae de fábrica (AKS sí), así que se
+instala en FASE 2. Sin él el HPA queda ciego (`FailedGetResourceMetric`) y ArgoCD marca la
+Application `Degraded` aunque los pods estén sanos — incidente real documentado.
+
+**P18 — ¿Cómo decide el HPA cuándo escalar y por qué el umbral de 5%?**
+
+**R:** Calcula utilización = uso promedio de CPU dividido por los `requests` de CPU de los pods, y
+la compara con el target. El 5% es didáctico: la app es async y barata en CPU, así que permite
+mostrar la convergencia 3→10 con carga modesta (`hey`). En producción se usaría un objetivo
+realista (por ejemplo 60-70%); el valor se revierte al cierre.
+
+**P19 — ¿Qué es `target-type ip` y cuál es su ventaja?**
+
+**R:** El ALB registra directamente las **IPs de los pods** (posible gracias al VPC CNI de EKS) en
+vez de IPs de nodos: balanceo pod a pod sin saltos extra, health checks contra el pod real y
+registro automático de réplicas nuevas. Evidencia: `describe-target-health` muestra targets
+`172.31.x.x` que son pods, no nodos (FASE 8).
+
+**P20 — ¿Cómo se crea y destruye el ALB? ¿Por qué el controller necesita `vpcId` explícito?**
+
+**R:** El AWS Load Balancer Controller observa el Ingress y reconcilia los recursos AWS (ALB,
+target group, listeners) con su rol IRSA; cuando el Ingress desaparece (prune), elimina el ALB. El
+`vpcId` explícito evita que el controller intente resolver la red vía metadata del nodo (IMDS) y
+termine en CrashLoopBackOff.
+
+**P21 — Si un pod no puede montar el volumen de secretos, ¿cómo se diagnostica?**
+
+**R:** Leyendo el evento exacto del pod (`kubectl describe pod`). Dos fallos ya conocidos: "no
+matches for kind SecretProviderClass" (driver/CRD ausentes: faltó la FASE 3) y "Failed to fetch
+parameters from all regions" (pod con SA `default` sin anotación IRSA). Método general:
+interpretar el error real del pod antes de tocar infraestructura, para no reconstruir lo que ya
+funciona.
+
+**P22 — ¿Qué es la `SecretProviderClass` y quién la consume?**
+
+**R:** Es el contrato declarativo (CRD) que describe qué montar — los tres parámetros SSM, formato
+y sincronización a Secret nativo. El driver la ejecuta y el Deployment la referencia desde su
+volumen; ya está definida en el overlay `aws-eks`.
+
+**P23 — ¿Por qué el driver CSI y su provider corren como DaemonSet?**
+
+**R:** Porque el montaje de secretos es una operación local a cada nodo: cada nodo necesita el
+driver (CRDs y `syncSecret`) y el provider AWS (traducción a llamadas SSM/KMS). Evidencia:
+`3/3` y `1/1` Running por nodo, con `PluginRegistered:true`.
+
+**P24 — ¿Qué son las `tokenRequests` con doble audiencia?**
+
+**R:** El driver pide al kubelet tokens JWT proyectados con dos audiencias: `sts.amazonaws.com`
+(la que el provider usa para asumir el rol vía STS) y `pods.eks.amazonaws.com` (compatibilidad
+con las identidades nativas de EKS). Sin la audiencia correcta, el provider no obtiene
+credenciales y el montaje falla.
+
+### GitOps y CI/CD
+
+**P25 — Describa el pipeline de punta a punta.**
+
+**R:** `git push` → GitHub Actions (autenticado por OIDC, sin claves) → `pytest` → build de la
+imagen → push a ECR con tag `:sha` (+ `:latest`) → el pipeline actualiza el tag en el manifiesto
+con un commit `[skip ci]` → ArgoCD detecta el cambio y sincroniza → rollout del nuevo ReplicaSet.
+Cierra en ~11 minutos, dentro del objetivo de menos de 15.
+
+**P26 — ¿Cómo se evita que el pipeline se dispare en bucle?**
+
+**R:** El commit que hace el propio pipeline (bump del tag) lleva `[skip ci]`; sin esa marca, cada
+corrida generaría otro push y un bucle infinito de ejecuciones.
+
+**P27 — ¿Cómo demuestra la FASE 9 el ciclo completo sin kubectl?**
+
+**R:** Se cambia la versión en `app/main.py` (2.0.0 → 3.0.0) y se hace push. Unos 11 minutos
+después un `curl` al ALB devuelve `3.0.0`: el cambio pasó por tests, build, registry, bump,
+sincronización de ArgoCD y rollout sin ninguna intervención manual en Kubernetes.
+
+**P28 — ¿Qué pasa si alguien cambia algo directamente con kubectl?**
+
+**R:** Aparece drift: el clúster queda `OutOfSync` respecto a Git y ArgoCD lo revierte en la
+siguiente reconciliación. La fuente de verdad es el repositorio — esa es la propiedad fundamental
+de GitOps frente al modelo imperativo.
+
+**P29 — ¿Por qué Kustomize para la aplicación y Helm para los componentes de terceros?**
+
+**R:** La app es propia: base + parches por nube, sin plantillas ni `values` dispersos, y ArgoCD lo
+soporta nativamente (el modo demo se controla comentando dos líneas). Los componentes de terceros
+(CSI driver, LB controller) se consumen como charts Helm oficiales y pinneados, porque son
+artefactos mantenidos por upstream. Cada herramienta en su rol.
+
+**P30 — ¿Qué significa el incidente "ArgoCD Degraded con pods sanos"?**
+
+**R:** Los pods corrían perfectamente, pero la Application reportaba `Degraded` porque el HPA no
+obtenía métricas: un HPA ciego (sin `metrics.k8s.io`) propaga su estado de salud hacia ArgoCD.
+Lección: "Degraded" no siempre significa que la carga falla — hay que leer el recurso hijo que lo
+origina antes de intervenir.
+
+### FinOps, cierre y visión global
+
+**P31 — ¿Cómo se garantiza que la cuenta quede a $0/h al final?**
+
+**R:** Orden estricto y verificado: demo OFF (comentar Ingress y HPA, push, prune y confirmar
+`elbv2` = 0) → `terraform destroy` de lb-controller, secrets-csi y clúster (inverso al alta) →
+checklist final (`ResourceNotFound`, 0 balanceadores, roles `NoSuchEntity`, SSM vacío). Solo
+permanece la plataforma base (gratuita o centavos al mes).
+
+**P32 — ¿Cuál es el huérfano más caro posible y cómo se evita?**
+
+**R:** Un ALB sin clúster: el controller que lo borraría vivía dentro del clúster destruido, así
+que nadie lo elimina y factura indefinidamente. Regla de oro #2: el Ingress se apaga **antes** de
+cualquier destroy, con verificación explícita de que no queden load balancers.
+
+**P33 — ¿Qué sobrevive a los destroys y por qué no es un riesgo de costo?**
+
+**R:** Usuario `terraform-ci`, bucket de state (~$0.01/mes), ECR (~$0.01/mes, protegido con
+`prevent_destroy`), OIDC de GitHub + rol de push e imágenes del pipeline. Todo suma centavos
+mensuales y evita reaprovisionar en cada demo: la permanencia es una decisión de diseño, no un
+descuido.
+
+**P34 — ¿Cuánto cuesta la sesión completa?**
+
+**R:** ≈$0.8-1.2: el clúster a $0.22/h durante la ventana FASE 1→10 (el grueso del costo), el ALB
+unos centavos durante las fases 7-8 (~$0.02/h + LCU), y SSM, IAM, CSI driver, LB controller y
+GitHub Actions en $0. La plataforma base ronda los $0.02/mes. Tras la FASE 10: $0/h (Apéndice C).
+
+**P35 — ¿Qué demuestra el proyecto de punta a punta? (respuesta de cierre)**
+
+**R:** Que un microservicio puede operarse en Kubernetes en la nube con: infraestructura como
+código reproducible, identidades federadas sin claves de larga vida, secretos que nacen en
+runtime y llegan al pod con least privilege, entrega GitOps con CI/CD de menos de 15 minutos,
+exposición externa y elasticidad reales, y disciplina FinOps con destrucción verificada a $0/h.
+Todo multicloud por diseño: la misma aplicación y el mismo flujo corren en la pata Azure con otro
+overlay.
+
+---
+
 ## Apéndice A — Incidentes conocidos y su mitigación (todos ya incorporados)
 
 | Síntoma | Causa raíz | Mitigación en este flujo |
