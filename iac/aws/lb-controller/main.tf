@@ -58,6 +58,15 @@ resource "aws_iam_openid_connect_provider" "eks" {
   tags = merge(var.tags, {
     Name = "${var.cluster_name}-eks-oidc-provider"
   })
+
+  # Recurso de CUENTA compartido (unico por issuer): en el flujo normal lo
+  # CREA iac/aws/secrets-csi y este modulo lo IMPORTA. Los tags los gobierna
+  # el modulo creador; aqui se ignoran para evitar la pelea de tags entre
+  # ambos states (incidente 2026-10-06: el apply intento untag -> AccessDenied
+  # UntagOpenIDConnectProvider, permiso no otorgado por least-privilege).
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # ============================================

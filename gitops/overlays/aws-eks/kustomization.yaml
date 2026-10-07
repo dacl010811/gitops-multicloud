@@ -13,7 +13,11 @@ namespace: sri-facturacion
   # CIERRE (sesion 2026-10-04): vuelve a comentarse — ArgoCD prunea el
   # Ingress y el controller BORRA el ALB. REGLA DE ORO FinOps: el Ingress
   # se borra ANTES que el cluster; si no, el ALB queda huerfano facturando.
-  # - ingress.yaml
+  # REACTIVADO (sesion 2026-10-06): el item vive abajo, dentro de resources:
+  # (mismo lugar que en el overlay original). ORDEN OBLIGATORIO: lb-controller
+  # instalado y Healthy ANTES del push — el sync automatico de ArgoCD crea el
+  # Ingress al llegar el commit y el ALB (~$0.0226/h) factura desde ese
+  # instante hasta su prune. Sin controller: Progressing eterno.
   # SESION SECRETOS (2026-10-05): ACTIVADO — requiere CSI Driver + provider
   # AWS instalados (scripts/bootstrap-secrets-csi-eks.sh) y parametros SSM
   # /sri-facturacion/* (iac/aws/secrets-csi). CIERRE: se MANTIENE activo —
@@ -25,6 +29,7 @@ namespace: sri-facturacion
 # (sin esto el mount falla con 'Failed to fetch parameters from all regions').
 resources:
 - ../../bases
+- ingress.yaml
 - secrets-store-ssm.yaml
 - serviceaccount.yaml
 
@@ -48,6 +53,10 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
+- path: hpa-patch.yaml
+  target:
+     kind: HorizontalPodAutoscaler
+     name: sri-facturacion-service-hpa
 
 # Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
 # aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit
