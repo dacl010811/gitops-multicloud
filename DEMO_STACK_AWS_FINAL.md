@@ -590,6 +590,9 @@ curl -s -H "Host: api.sri.ec.gob.ec" "http://$ALB/health"; echo
 curl -s -H "Host: api.sri.ec.gob.ec" "http://$ALB/api/v1/version"; echo
 ```
 
+(Para probarlo con el dominio del SRI —`http://api.sri.ec.gob.ec/health`— en navegador o bastión:
+ver **Apéndice D**. Pegar la URL del ALB a secas da 404: el Ingress es host-based.)
+
 **Costo:** el ALB factura ~$0.02/h + LCU mientras exista → minutos de demo = centavos.
 **Nunca se deja vivo:** el cierre (FASE 10) lo desactiva primero.
 
@@ -1093,3 +1096,77 @@ overlay.
 | Bucket S3 de state | ~$0.01/mes | Plataforma base — fuera del ciclo destroy |
 | ECR + GitHub Actions | ~$0.01/mes | Plataforma base; repo público (Actions gratis); imágenes ~250 MB |
 | **Total estimado de la sesión** | **≈ $0.8-1.2** | Y **$0/h** tras la FASE 10 |
+
+## Apéndice D — Tools: probar el ALB con el dominio del SRI (macOS y bastión Amazon Linux 10)
+
+**Qué se logra:** ver la app respondiendo con el dominio del SRI
+(`http://api.sri.ec.gob.ec/health`) en lugar de la URL cruda del ALB — la prueba más
+vistosa de la FASE 7, replicable tanto en macOS como en el bastión de demo.
+
+**Por qué pegar la URL del ALB a secas da 404:** el Ingress es **host-based** — la regla
+solo matchea `Host: api.sri.ec.gob.ec`. El navegador envía como Host el hostname del ALB →
+ninguna regla matchea → responde 404 el propio ALB (sin tocar los pods). El curl de la
+FASE 7.2 funciona porque envía el header a propósito (`-H "Host: ..."`).
+
+### D.1 Bastión Amazon Linux 10 — paquetes (1 vez, $0)
+
+Amazon Linux usa `dnf`. De fábrica trae `curl` y `sudo`; **NO** trae `dig` ni `jq`:
+
+```bash
+sudo dnf install -y bind-utils jq     # dig vive en bind-utils
+# Verificar:
+command -v dig jq curl                # las tres rutas
+dig -v 2>&1 | head -1                 # versión de BIND
+jq --version                          # jq-1.x
+```
+
+(Resto del tooling de la sesión —aws cli, kubectl, helm, terraform, hey—: ver §0.1.)
+
+### D.2 Opción 1 — `curl --resolve` (la más limpia: cero cambios en el sistema)
+
+Resuelve el dominio SOLO para ese curl — no toca `/etc/hosts`, no deja rastro:
+
+```bash
+ALB=$(kubectl -n sri-facturacion get ingress sri-facturacion-ingress \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+IP=$(dig +short "$ALB" | head -1)     # el ALB resuelve a varias IPs; tomamos una
+echo "ALB=$ALB  IP=$IP"
+
+curl -s --resolve api.sri.ec.gob.ec:80:"$IP" http://api.sri.ec.gob.ec/health | jq
+# Esperado: {"status": "healthy", ...} — mismo JSON que la FASE 7.2
+```
+
+### D.3 Opción 2 — `/etc/hosts` (para navegador o cualquier app del bastión)
+
+```bash
+echo "$IP  api.sri.ec.gob.ec" | sudo tee -a /etc/hosts    # IP obtenida en D.2
+curl -s http://api.sri.ec.gob.ec/health | jq              # ya sin trucos
+```
+
+- **Amazon Linux NO requiere flush DNS**: glibc resuelve directo en cada lookup (sin caché
+  de sistema; no usa systemd-resolved por defecto) → los cambios aplican AL INSTANTE.
+  (Si tu imagen lo usara —`systemctl is-active systemd-resolved`— el flush sería
+  `sudo resolvectl flush-caches`.)
+- En macOS el equivalente SÍ exige flush: `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`.
+- Si usas navegador en el bastión, su caché es independiente (Chrome:
+  `chrome://net-internals/#dns` → *Clear host cache*).
+- Las IPs del ALB **rotan**: si deja de responder a mitad de la demo, re-resuelve
+  (`dig +short "$ALB"`) y actualiza la línea.
+- **Limpieza al terminar** (es un dominio gubernamental real, solo mapeado localmente):
+
+```bash
+sudo sed -i '/api.sri.ec.gob.ec/d' /etc/hosts
+```
+
+### D.4 Equivalencias rápidas macOS → Amazon Linux 10
+
+| Tarea | macOS | Amazon Linux 10 |
+|---|---|---|
+| Resolver la IP del ALB | `dig +short` (viene de fábrica) | `dig +short` → `dnf install bind-utils` |
+| Inspeccionar JSON | `jq` (brew) | `jq` → `dnf install jq` |
+| Mapear dominio local | `sudo tee -a /etc/hosts` | idéntico |
+| Flush de caché DNS | `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder` | No existe (glibc sin caché; `/etc/hosts` aplica al instante) |
+| Limpiar el mapeo | `sudo sed -i '' '/api.sri.ec.gob.ec/d' /etc/hosts` | `sudo sed -i '/api.sri.ec.gob.ec/d' /etc/hosts` (macOS exige el `''` extra) |
+
+**Costo de todo el apéndice: $0** — 100% local al equipo; el ALB sigue su reloj (~$0.02/h)
+hasta la FASE 10.
