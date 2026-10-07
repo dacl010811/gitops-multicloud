@@ -13,9 +13,9 @@ namespace: sri-facturacion
   # CIERRE (sesion 2026-10-04): vuelve a comentarse — ArgoCD prunea el
   # Ingress y el controller BORRA el ALB. REGLA DE ORO FinOps: el Ingress
   # se borra ANTES que el cluster; si no, el ALB queda huerfano facturando.
-  # DEMO MODE ON (2026-10-06, FASE 7.1): item reactivado abajo, dentro de
-  # resources: (su lugar canonico). Prerequisitos verificados: controller
-  # 2/2 Running y app Synced/Healthy. FASE 10 lo vuelve a comentar PRIMERO.
+  # DEMO MODE ON (2026-10-06, FASE 7.1) → OFF (FASE 10, mismo dia): demo
+  # completada (ALB + balanceo entre pods + HPA en vivo); el item se
+  # comenta para el prune — mismo cierre ordenado que el 2026-10-04.
   # SESION SECRETOS (2026-10-05): ACTIVADO — requiere CSI Driver + provider
   # AWS instalados (scripts/bootstrap-secrets-csi-eks.sh) y parametros SSM
   # /sri-facturacion/* (iac/aws/secrets-csi). CIERRE: se MANTIENE activo —
@@ -27,14 +27,13 @@ namespace: sri-facturacion
 # (sin esto el mount falla con 'Failed to fetch parameters from all regions').
 resources:
 - ../../bases
-- ingress.yaml
+#- ingress.yaml
 - secrets-store-ssm.yaml
 - serviceaccount.yaml
 
 # Sobrescribe el ConfigMap base con los valores especificos de AWS EKS
-  # UMBRAL DIDACTICO: REVERTIDO en el cierre (2026-10-04); reactivado el
-  # 2026-10-06 (FASES 7.1/8) — item activo abajo, dentro de patches:. El
-  # umbral real (70%) vive en bases/hpa.yml; FASE 10 lo vuelve a comentar.
+  # UMBRAL DIDACTICO: ON en FASES 7.1/8 (2026-10-06) → OFF en el cierre
+  # (FASE 10, mismo dia). El umbral real (70%) vive en bases/hpa.yml.
   # SESION SECRETOS (2026-10-05): ACTIVADO tras fix del bug #7 — metadata.name
   # y container name del patch apuntan a sri-facturacion-service-deployment
   # (el nombre REAL del base; sin el fix del container name, el strategic
@@ -48,10 +47,10 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
-- path: hpa-patch.yaml
-  target:
-    kind: HorizontalPodAutoscaler
-    name: sri-facturacion-service-hpa
+#- path: hpa-patch.yaml
+#  target:
+#    kind: HorizontalPodAutoscaler
+#    name: sri-facturacion-service-hpa
 
 # Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
 # aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit
