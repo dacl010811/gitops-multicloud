@@ -25,9 +25,13 @@ namespace: sri-facturacion
 # CIERRE #4-ter (2026-10-05): SA dedicado con la anotacion del rol — el
 # provider AWS lee la anotacion del SA DEL POD para asumir el rol IRSA
 # (sin esto el mount falla con 'Failed to fetch parameters from all regions').
+# DEMO ALB + CIERRE (2026-10-07): Ingress validado en variante catch-all
+# (acceso directo por DNS del ELB, sin host-header). Mismo dia, FASE 10:
+# ingress + hpa-patch comentados para el prune — regla de oro FinOps:
+# el Ingress muere ANTES que el cluster (prune ArgoCD -> controller borra ALB).
 resources:
 - ../../bases
-- ingress.yaml
+# - ingress.yaml
 - secrets-store-ssm.yaml
 - serviceaccount.yaml
 
@@ -47,10 +51,10 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
-- path: hpa-patch.yaml
-  target:
-    kind: HorizontalPodAutoscaler
-    name: sri-facturacion-service-hpa
+#- path: hpa-patch.yaml
+#  target:
+#    kind: HorizontalPodAutoscaler
+#    name: sri-facturacion-service-hpa
 
 # Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
 # aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit
