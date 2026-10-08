@@ -27,7 +27,7 @@ namespace: sri-facturacion
 # (sin esto el mount falla con 'Failed to fetch parameters from all regions').
 resources:
 - ../../bases
-#- ingress.yaml
+- ingress.yaml
 - secrets-store-ssm.yaml
 - serviceaccount.yaml
 
@@ -47,10 +47,10 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
-#- path: hpa-patch.yaml
-#  target:
-#    kind: HorizontalPodAutoscaler
-#    name: sri-facturacion-service-hpa
+- path: hpa-patch.yaml
+  target:
+    kind: HorizontalPodAutoscaler
+    name: sri-facturacion-service-hpa
 
 # Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
 # aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit
