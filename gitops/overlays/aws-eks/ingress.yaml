@@ -13,9 +13,24 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
 spec:
   ingressClassName: alb
+  #rules:
+  #  - host: api.sri.ec.gob.ec
+  #    http:
+  #      paths:
+  #        - path: /
+  #          pathType: Prefix
+  #          backend:
+  #            service:
+  #              # FIX 2026-10-03: el Service real es 'sri-facturacion-service-svc'
+  #              # (bases/service.yml). El nombre anterior apuntaba a un recurso
+  #              # inexistente: ALB con target group vacio (404 eterno).
+  #              name: sri-facturacion-service-svc
+  #              port:
+  #                name: http
+
+  # Directo al DNS del ALB sin Hostname en el Header
   rules:
-    - host: api.sri.ec.gob.ec
-      http:
+    - http:
         paths:
           - path: /
             pathType: Prefix
