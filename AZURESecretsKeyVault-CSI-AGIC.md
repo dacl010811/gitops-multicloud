@@ -195,7 +195,9 @@ kubectl get nodes                                  # 3 nodos Ready (Standard_D2s
 
 # Driver CSI + provider Azure (add-on gestionado)
 kubectl -n kube-system get pods -l app=secrets-store-csi-driver        # driver
-kubectl -n kube-system get pods | grep -i csi-secrets-store-provider-azure
+# Ojo: el DaemonSet real es aks-secrets-store-provider-azure (SIN 'csi' en el
+# nombre — el driver sí lo lleva). Grep verificado en vivo 2026-10-08.
+kubectl -n kube-system get pods | grep -i provider-azure
 
 # AGIC + Application Gateway (greenfield)
 kubectl -n kube-system get pods | grep -i ingress-appgw
