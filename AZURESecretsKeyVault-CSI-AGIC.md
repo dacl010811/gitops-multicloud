@@ -70,7 +70,7 @@ con el clúster vía Terraform — homólogo del trust policy IRSA que vivía en
 chart Helm del provider AWS instalado por `bootstrap-secrets-csi-eks.sh`, con menos superficie operativa
 (lo opera Microsoft). Nota azurerm: el bloque **exige** `secret_rotation_enabled` explícito.
 
-**D6 — AGIC add-on greenfield** (`ingress_application_gateway { enabled = true }`): el Application Gateway
+**D6 — AGIC add-on greenfield** (`ingress_application_gateway { gateway_name = "sri-appgw", subnet_cidr = "10.225.0.0/24" }` — azurerm v3 exige uno de `gateway_id`/`subnet_id`/`subnet_cidr`; con Azure CNI Overlay (default de AKS moderno) el add-on exige prefijo ≥ /24 — el /16 clásico falla con `IngressAppGwAddonConfigInvalidSubnetCIDR`, incidente real 2026-10-08): el Application Gateway
 v2 lo crea el add-on en el node RG (MC_) al nacer el clúster, y **muere con él** — el RG MC_ se borra en el
 destroy de AKS. **Cero huérfanos por diseño** (mejor que AWS, donde el ALB huérfano era el riesgo de la
 sesión y motivó la regla de oro). Misma filosofía que LB Controller→ALB: la IaC declara el COMPORTAMIENTO
@@ -151,7 +151,7 @@ pendiente reconciliar el state de Terraform. Verificar ANTES de planear:
 ```bash
 cd iac/azure && terraform init
 terraform state list    # esperado: vacío (o solo recursos irrelevantes)
-terraform plan          # esperado: Plan: 3 to add (RG sri-aks-rg, AKS, federated credential)
+terraform plan          # esperado con el código actual: Plan: 2 to add (RG + AKS). El federated credential se suma en FASE 2
 ```
 
 Si `state list` aún lista el clúster/RG muertos → `terraform state rm <recurso>` por cada uno (o
@@ -580,12 +580,21 @@ Dentro de `resource "azurerm_kubernetes_cluster" "main"`, después de `identity 
     secret_rotation_enabled = false
   }
 
-  # AGIC GREENFIELD: crea un Application Gateway v2 en el node RG al nacer
-  # el clúster; muere con él (el RG MC_ se borra en el destroy) → cero
-  # huérfanos por diseño. Homólogo de la cadena LB Controller→ALB de AWS.
-  # Factura desde el apply (~$0.02-0.05/h), no desde el Ingress.
+  # AGIC GREENFIELD: crea un Application Gateway v2 (gateway_name) en una
+  # subnet nueva del VNet managed del clúster (10.225.0.0/24). INCIDENTE
+  # REAL (2026-10-08): el clúster usa Azure CNI Overlay (default de AKS
+  # moderno) y el add-on RECHAZA prefijos menores a /24 con
+  # "IngressAppGwAddonConfigInvalidSubnetCIDR" — el /16 de los ejemplos
+  # kubenet clásicos ya no aplica. El AppGW muere con el node RG MC_ en el
+  # destroy → cero huérfanos por diseño. Homólogo de la cadena LB
+  # Controller→ALB de AWS. Factura desde el apply (~$0.02-0.05/h), no
+  # desde el Ingress.
+  # Nota azurerm v3 (verificado en provider 3.117): exige UNO de
+  # gateway_id / subnet_id / subnet_cidr — la versión original del plan
+  # (enabled = true) es del esquema v2 y falla la validación en v3.
   ingress_application_gateway {
-    enabled = true
+    gateway_name = "sri-appgw"
+    subnet_cidr  = "10.225.0.0/24"
   }
 ```
 
@@ -923,6 +932,7 @@ patches:
 | 8 | hey ignora `-H "Host:…"` (cliente Go) | `/etc/hosts` + URL del dominio — lección AWS transferida |
 | 9 | Issuer OIDC cambia por recreate (UUID) | Por diseño: fedcred en el state del clúster; Terraform la recrea en cada apply |
 | 10 | ImagePullBackOff tras recreate (kubelet identity sin AcrPull) | Re-ejecutar `bootstrap-acr-rbac-azure.sh` (incidente ya guionizado) |
+| 11 | **INCIDENTE REAL 2026-10-08**: con Azure CNI Overlay (default de AKS moderno), el add-on AGIC RECHAZA `subnet_cidr` con prefijo < /24 (`IngressAppGwAddonConfigInvalidSubnetCIDR`) | Fix: `subnet_cidr = "10.225.0.0/24"` — retry limpio del apply (el RG ya había quedado creado; el clúster no llegó a provisionarse) |
 
 ## 7. Preguntas probables del jurado (pata Azure)
 

@@ -67,3 +67,25 @@ module "aks" {
   node_instance_type  = var.node_instance_type
   tags                = var.tags
 }
+
+# ============================================
+# Federación SA → Managed Identity (sesión 2026-10-08)
+# Homólogo del trust policy IRSA de AWS (iac/aws/secrets-csi). El issuer
+# OIDC de AKS lleva un UUID POR CLÚSTER → la credencial federada es EFÍMERA:
+# vive en ESTE state y se recrea con cada clúster. La MI es PERMANENTE
+# (iac/azure/key-vault); aquí solo se referencia vía data source (dirección
+# segura de dependencia: lo efímero lee lo permanente).
+# ============================================
+data "azurerm_user_assigned_identity" "workload" {
+  name                = var.workload_identity_name
+  resource_group_name = var.platform_resource_group_name
+}
+
+resource "azurerm_federated_identity_credential" "workload" {
+  name                = "sri-facturacion-sa"
+  resource_group_name = var.platform_resource_group_name
+  parent_id           = data.azurerm_user_assigned_identity.workload.id
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = module.aks.oidc_issuer_url
+  subject             = "system:serviceaccount:sri-facturacion:sri-facturacion-sa"
+}

@@ -8,10 +8,17 @@ namespace: sri-facturacion
 
 resources:
 - ../../bases
-  #- ingress.yaml
-  # TEMPORAL (sesión flujo GitOps): secrets-store-csi.yaml exige el CSI Driver
-  # instalado + Key Vault + Managed Identity reales. Se reactiva en la sesión
-  # dedicada a secretos (ver placeholders <ACR_NAME>, <MANAGED_IDENTITY_CLIENT_ID>).
+# SESION SECRETOS (2026-10-08): ACTIVADO — requiere driver CSI + provider
+# Azure (add-on key_vault_secrets_provider del módulo AKS), Key Vault
+# sri-keyvault-23c5 + MI sri-facturacion-wi (iac/azure/key-vault, estado
+# PERMANENTE) y fedcred (iac/azure). Valores públicos commiteados: tras esta
+# sesión el overlay NO requiere edición en recreates del clúster.
+- secrets-store-csi.yaml
+- serviceaccount.yaml
+#- ingress.yaml
+# TEMPORAL (FASE 6 de la sesión 2026-10-08): AGIC add-on ya corre en el
+# clúster (ingress_application_gateway del módulo AKS) y el AppGW v2 ya
+# factura desde el apply — activarlo es solo quitar el comentario.
 
 # Sobrescribe el ConfigMap base con los valores específicos de Azure AKS
 patches:
@@ -19,10 +26,14 @@ patches:
   target:
     kind: ConfigMap
     name: sri-facturacion-config
-  # NOTA (sesión de secretos): restaurar deployment-secrets-patch.yaml junto
-  # con secrets-store-csi.yaml. OJO: ese parche declara metadata.name
-  # 'sri-facturacion-service', pero el Deployment base se llama
-  # 'sri-facturacion-service-deployment' — corregir el name antes de activarlo.
+# SESION SECRETOS (2026-10-08): activado CON el fix del bug #7 —
+# metadata.name y container name del patch = sri-facturacion-service-deployment
+# (el nombre REAL del base; sin el fix del container name, el strategic merge
+# añadiría un segundo contenedor en vez de parchear el existente).
+- path: deployment-secrets-patch.yaml
+  target:
+    kind: Deployment
+    name: sri-facturacion-service-deployment
 
 # Imagen real del microservicio en ACR (az acr build / pipeline CI).
 # El pull de los nodos usa la kubelet identity (AcrPull via bootstrap-acr-rbac-azure.sh).

@@ -17,7 +17,7 @@ output "cluster_endpoint" {
   value       = module.aks.endpoint
   # El endpoint AKS proviene de kube_config[0].host (bloque sensitive del
   # módulo hijo); Terraform exige propagar la marca hasta el output raíz.
-  sensitive   = true
+  sensitive = true
 }
 
 output "kubeconfig" {

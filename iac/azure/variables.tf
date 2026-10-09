@@ -54,3 +54,15 @@ variable "tags" {
     Cloud       = "azure"
   }
 }
+
+variable "workload_identity_name" {
+  description = "MI permanente del workload (creada por iac/azure/key-vault)"
+  type        = string
+  default     = "sri-facturacion-wi"
+}
+
+variable "platform_resource_group_name" {
+  description = "RG de plataforma permanente (Key Vault, ACR, backend)"
+  type        = string
+  default     = "sri-tfstate-rg"
+}
