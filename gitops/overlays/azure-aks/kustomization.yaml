@@ -18,7 +18,7 @@ resources:
 - ../../bases
 - secrets-store-csi.yaml
 - serviceaccount.yaml
-- ingress.yaml
+#- ingress.yaml
 
 # Sobrescribe el ConfigMap base con los valores específicos de Azure AKS
 # SESION SECRETOS (2026-10-08): activado CON el fix del bug #7 —
