@@ -37,10 +37,10 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
-- path: hpa-patch.yaml
-  target:
-    kind: HorizontalPodAutoscaler
-    name: sri-facturacion-service-hpa
+#- path: hpa-patch.yaml
+#  target:
+#    kind: HorizontalPodAutoscaler
+#    name: sri-facturacion-service-hpa
 
 # Imagen real del microservicio en ACR (az acr build / pipeline CI).
 # El pull de los nodos usa la kubelet identity (AcrPull via bootstrap-acr-rbac-azure.sh).
