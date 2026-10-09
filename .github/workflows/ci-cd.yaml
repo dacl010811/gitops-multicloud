@@ -3,7 +3,8 @@ name: CI/CD - SRI Facturación Service
 # Objetivo: pipeline completo en <15 min (test -> build/push multi-cloud -> bump de tag GitOps)
 on:
   push:
-    branches: [main, feature-patron-appOfapps]
+    # Producción: el pipeline solo corre en main (la rama feature fue mergeada)
+    branches: [main]
     paths:
       - "app/**"
       - ".github/workflows/ci-cd.yaml"

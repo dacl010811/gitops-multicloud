@@ -11,9 +11,8 @@ spec:
   project: sri-facturacion
   source:
     repoURL: https://github.com/dacl010811/gitops-multicloud.git
-    # TEMPORAL (desarrollo): la rama feature tiene los fixes del flujo GitOps;
-    # main esta atras. Al mergear el TFM, volver a 'main'.
-    targetRevision: feature-patron-appOfapps
+    # Estado final del TFM: ArgoCD vigila main (rama de producción)
+    targetRevision: main
     path: gitops/overlays/aws-eks
   destination:
     # ArgoCD desplegado en el propio cluster EKS
