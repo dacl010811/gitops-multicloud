@@ -295,8 +295,11 @@ copiado en SPC/SA; (3) subject de la fedcred ≠ `system:serviceaccount:sri-fact
 
 ### FASE 6 — Ingress ON → AGIC → Application Gateway responde (20-30 min · $0 incremental)
 
-**[AGENTE PREPARA]** el uncomment de `ingress.yaml` en `kustomization.yaml` (el archivo ya existe y es
-correcto: `ingressClassName: azure-application-gateway`, host `api.sri.ec.gob.ec`, probe `/health`).
+**[AGENTE PREPARA]** el uncomment de `ingress.yaml` en `kustomization.yaml` + 2 ajustes ESPEJO del fix AWS
+(2026-10-03): (a) modo **catch-all** — regla sin `host` (la variante por dominio queda comentada): AGIC crea
+el listener básico del AppGW y responde a cualquier Host, incluida la IP directa; (b) backend corregido a
+`sri-facturacion-service-svc` (el nombre antiguo `sri-facturacion-service` no existe en bases/service.yml →
+backend pool vacío y 502 eterno — el mismo bug del '404 eterno' del ALB).
 
 ```bash
 kubectl kustomize gitops/overlays/azure-aks | python3 -c "import sys,yaml; print(len(list(yaml.safe_load_all(sys.stdin))),'recursos')"
@@ -307,22 +310,21 @@ kubectl -n argocd annotate application sri-facturacion-azure-aks argocd.argoproj
 kubectl -n sri-facturacion get ingress   # ADDRESS = IP pública del AppGW (AGIC ya lo configuró)
 ```
 
-**Prueba (mismas lecciones que AWS — el Ingress es host-based):**
+**Prueba (espejo del fix AWS 2026-10-03 — catch-all: curl directo a la IP, sin header Host):**
 
 ```bash
 GW_IP=$(kubectl -n sri-facturacion get ingress sri-facturacion-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-curl -s -H "Host: api.sri.ec.gob.ec" "http://${GW_IP}/health"            # 200 (curl SÍ promociona -H)
-for i in $(seq 1 6); do curl -s -H "Host: api.sri.ec.gob.ec" "http://${GW_IP}/api/v1/version" | jq -r .hostname; done
+curl -s "http://${GW_IP}/health"                                        # 200 directo (catch-all)
+for i in $(seq 1 6); do curl -s "http://${GW_IP}/api/v1/version" | jq -r .hostname; done
 # → hostnames de pods DISTINTOS: balanceo real (backend pool del AppGW apunta a las IPs de los pods)
 ```
 
-Para navegador/bastión/hey: entrada en `/etc/hosts` (`sudo sh -c "echo '${GW_IP} api.sri.ec.gob.ec' >> /etc/hosts"`
-+ flush con `dscacheutil -flushcache; killall -HUP mDNSResponder`) — ver Apéndice D de
-DEMO_STACK_AWS_FINAL.md. Recordatorio clave: **hey ignora `-H`** (cliente Go): la carga va contra el
-dominio resuelto por hosts, sin header.
+Con catch-all no hace falta `/etc/hosts` ni header: `hey -z 90s -c 30 "http://${GW_IP}/health"` va directo
+a la IP (recordatorio: **hey ignora `-H`**, cliente Go — si algún día se vuelve al modo por dominio, usar
+`/etc/hosts` como en AWS, ver Apéndice D de DEMO_STACK_AWS_FINAL.md).
 
-**Diferencia didáctica vs AWS:** el ADDRESS es una **IP** (no hostname DNS como el ALB) — y el 404 sin
-header Host lo produce el propio AppGW, misma semántica que el ALB.
+**Diferencia didáctica vs AWS:** el ADDRESS del Ingress es una **IP** (no hostname DNS como el ALB); con
+catch-all ambas patas responden directo sin header Host (el mismo fix aplicado en las dos nubes).
 
 ### FASE 7 — (OPCIONAL) HPA en vivo con hey (20-30 min · ~$0.02)
 
@@ -334,7 +336,7 @@ didáctico 5% sobre `/spec/metrics/0`) + su entrada en `kustomization.yaml`. met
 kubectl kustomize gitops/overlays/azure-aks | grep averageUtilization   # → 5 (el 70% real vive en bases/hpa.yml)
 git add gitops/overlays/azure-aks && git commit -m "azure: umbral didactico HPA (demo)" && git push
 
-hey -z 90s -c 30 http://api.sri.ec.gob.ec/health     # tras /etc/hosts; sin -H
+hey -z 90s -c 30 http://${GW_IP}/health             # catch-all: directo a la IP, sin hosts ni -H
 kubectl -n sri-facturacion get hpa -w                # 3 → N réplicas, CPU convergiendo
 ```
 

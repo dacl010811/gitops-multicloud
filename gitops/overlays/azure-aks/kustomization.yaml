@@ -15,10 +15,10 @@ resources:
 # sesión el overlay NO requiere edición en recreates del clúster.
 - secrets-store-csi.yaml
 - serviceaccount.yaml
-#- ingress.yaml
-# TEMPORAL (FASE 6 de la sesión 2026-10-08): AGIC add-on ya corre en el
-# clúster (ingress_application_gateway del módulo AKS) y el AppGW v2 ya
-# factura desde el apply — activarlo es solo quitar el comentario.
+# SESION INGRESS (2026-10-08): ACTIVADO — AGIC add-on ya corre en el clúster
+# (ingress_application_gateway del módulo AKS) y el AppGW v2 ya factura desde
+# el apply. Homólogo del ALB de aws-eks: host api.sri.ec.gob.ec + probe /health.
+- ingress.yaml
 
 # Sobrescribe el ConfigMap base con los valores específicos de Azure AKS
 patches:
