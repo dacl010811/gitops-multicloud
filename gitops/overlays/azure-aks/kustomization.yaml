@@ -34,6 +34,13 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
+# FASE 7 (demo HPA 2026-10-08): ACTIVADO temporalmente — umbral didactico 5%
+# sobre CPU (espejo del demo AWS); el umbral real (70%) vive en bases/hpa.yml.
+# REVERTIR al cerrar la demo: comentar aqui + push.
+- path: hpa-patch.yaml
+  target:
+    kind: HorizontalPodAutoscaler
+    name: sri-facturacion-service-hpa
 
 # Imagen real del microservicio en ACR (az acr build / pipeline CI).
 # El pull de los nodos usa la kubelet identity (AcrPull via bootstrap-acr-rbac-azure.sh).
