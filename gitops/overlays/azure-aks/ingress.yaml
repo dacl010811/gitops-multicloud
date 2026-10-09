@@ -9,14 +9,34 @@ metadata:
     appgw.ingress.kubernetes.io/request-timeout: "30"
 spec:
   ingressClassName: azure-application-gateway
+  #rules:
+  #  - host: api.sri.ec.gob.ec
+  #    http:
+  #      paths:
+  #        - path: /
+  #          pathType: Prefix
+  #          backend:
+  #            service:
+  #              name: sri-facturacion-service-svc
+  #              port:
+  #                name: http
+
+  # SESION 2026-10-08: modo CATCH-ALL (espejo del fix AWS 2026-10-03) — regla
+  # SIN host: AGIC crea el listener basico del AppGW y responde a cualquier
+  # Host, incluida la IP directa del AppGW. La variante por dominio queda
+  # comentada arriba por si se quiere mode multi-site a futuro.
+  # Directo a la IP del AppGW sin Hostname en el Header
   rules:
-    - host: api.sri.ec.gob.ec
-      http:
+    - http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: sri-facturacion-service
+                # FIX 2026-10-08 (espejo del fix ALB 2026-10-03): el Service real
+                # es 'sri-facturacion-service-svc' (bases/service.yml). El nombre
+                # anterior (sri-facturacion-service) apuntaba a un recurso
+                # inexistente: AppGW con backend pool vacio (502 eterno).
+                name: sri-facturacion-service-svc
                 port:
                   name: http

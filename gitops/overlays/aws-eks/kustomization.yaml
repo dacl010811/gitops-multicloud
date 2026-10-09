@@ -6,28 +6,65 @@ metadata:
 
 namespace: sri-facturacion
 
+  # RESTAURADO (sesion 2026-10-03, Ingress + IRSA): primero se instalo el
+  # AWS Load Balancer Controller con identidad IRSA (iac/aws/lb-controller)
+  # y recien entonces se habilito aqui. Habilitarlo sin controller dejaba
+  # ArgoCD en Progressing eterno (misma leccion que AGIC en Azure).
+  # CIERRE (sesion 2026-10-04): vuelve a comentarse — ArgoCD prunea el
+  # Ingress y el controller BORRA el ALB. REGLA DE ORO FinOps: el Ingress
+  # se borra ANTES que el cluster; si no, el ALB queda huerfano facturando.
+  # DEMO MODE ON (2026-10-06, FASE 7.1) → OFF (FASE 10, mismo dia): demo
+  # completada (ALB + balanceo entre pods + HPA en vivo); el item se
+  # comenta para el prune — mismo cierre ordenado que el 2026-10-04.
+  # SESION SECRETOS (2026-10-05): ACTIVADO — requiere CSI Driver + provider
+  # AWS instalados (scripts/bootstrap-secrets-csi-eks.sh) y parametros SSM
+  # /sri-facturacion/* (iac/aws/secrets-csi). CIERRE: se MANTIENE activo —
+  # la proxima sesion re-crea el modulo secrets-csi y el driver ANTES de
+  # que ArgoCD sincronice; pods en ContainerCreating hasta entonces son
+  # esperados (sin Ingress activo no hay ALB que huerfane).
+# CIERRE #4-ter (2026-10-05): SA dedicado con la anotacion del rol — el
+# provider AWS lee la anotacion del SA DEL POD para asumir el rol IRSA
+# (sin esto el mount falla con 'Failed to fetch parameters from all regions').
+# DEMO ALB + CIERRE (2026-10-07): Ingress validado en variante catch-all
+# (acceso directo por DNS del ELB, sin host-header). Mismo dia, FASE 10:
+# ingress + hpa-patch comentados para el prune — regla de oro FinOps:
+# el Ingress muere ANTES que el cluster (prune ArgoCD -> controller borra ALB).
+# - ingress.yaml
 resources:
-  - ../../bases
-  - ingress.yaml
-  - secrets-store-ssm.yaml
+- ../../bases
+- secrets-store-ssm.yaml
+- serviceaccount.yaml
 
-# Sobrescribe el ConfigMap base con los valores específicos de AWS EKS
+# Sobrescribe el ConfigMap base con los valores especificos de AWS EKS
+  # UMBRAL DIDACTICO: ON en FASES 7.1/8 (2026-10-06) → OFF en el cierre
+  # (FASE 10, mismo dia). El umbral real (70%) vive en bases/hpa.yml.
+  # SESION SECRETOS (2026-10-05): ACTIVADO tras fix del bug #7 — metadata.name
+  # y container name del patch apuntan a sri-facturacion-service-deployment
+  # (el nombre REAL del base; sin el fix del container name, el strategic
+  # merge anadiria un segundo container en vez de parchear el existente).
 patches:
-  - path: configmap-patch.yaml
-    target:
-      kind: ConfigMap
-      name: sri-facturacion-config
-  # Monta los secretos de AWS Secrets Manager vía CSI Driver
-  - path: deployment-secrets-patch.yaml
-    target:
-      kind: Deployment
-      name: sri-facturacion-service
+- path: configmap-patch.yaml
+  target:
+    kind: ConfigMap
+    name: sri-facturacion-config
+- path: deployment-secrets-patch.yaml
+  target:
+    kind: Deployment
+    name: sri-facturacion-service-deployment
+#- path: hpa-patch.yaml
+#  target:
+#    kind: HorizontalPodAutoscaler
+#    name: sri-facturacion-service-hpa
 
-# Imagen desde Amazon ECR
+# Imagen REAL en ECR (repo creado por Terraform: iac/aws/registry/, state
+# aws/registry.tfstate). El pipeline pinea el tag sha via 'kustomize edit
+# set image' en cada build; aqui queda 'latest' como valor inicial.
+# El nombre logico 'sri-facturacion-service' matchea la imagen del base
+# gracias al transformer images: (misma leccion de Azure).
 images:
-  - name: sri-facturacion-service
-    newName: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
-    newTag: "1.0.0"
+- name: sri-facturacion-service
+  newName: 053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
+  newTag: a1519f9579bcf2487ff48fd5cadeb966551feaf3
 
 commonLabels:
   cloud: aws-eks

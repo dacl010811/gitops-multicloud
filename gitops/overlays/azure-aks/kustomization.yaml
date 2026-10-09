@@ -6,28 +6,48 @@ metadata:
 
 namespace: sri-facturacion
 
+# SESION SECRETOS (2026-10-08): ACTIVADO — requiere driver CSI + provider
+# Azure (add-on key_vault_secrets_provider del módulo AKS), Key Vault
+# sri-keyvault-23c5 + MI sri-facturacion-wi (iac/azure/key-vault, estado
+# PERMANENTE) y fedcred (iac/azure). Valores públicos commiteados: tras esta
+# sesión el overlay NO requiere edición en recreates del clúster.
+# SESION INGRESS (2026-10-08): ACTIVADO — AGIC add-on ya corre en el clúster
+# (ingress_application_gateway del módulo AKS) y el AppGW v2 ya factura desde
+# el apply. Homólogo del ALB de aws-eks: host api.sri.ec.gob.ec + probe /health.
 resources:
-  - ../../bases
-  - ingress.yaml
-  - secrets-store-csi.yaml
+- ../../bases
+- secrets-store-csi.yaml
+- serviceaccount.yaml
+#- ingress.yaml
 
 # Sobrescribe el ConfigMap base con los valores específicos de Azure AKS
+# SESION SECRETOS (2026-10-08): activado CON el fix del bug #7 —
+# metadata.name y container name del patch = sri-facturacion-service-deployment
+# (el nombre REAL del base; sin el fix del container name, el strategic merge
+# añadiría un segundo contenedor en vez de parchear el existente).
+# FASE 7 (demo HPA 2026-10-08): ACTIVADO temporalmente — umbral didactico 5%
+# sobre CPU (espejo del demo AWS); el umbral real (70%) vive en bases/hpa.yml.
+# REVERTIR al cerrar la demo: comentar aqui + push.
 patches:
-  - path: configmap-patch.yaml
-    target:
-      kind: ConfigMap
-      name: sri-facturacion-config
-  # Monta los secretos de Azure Key Vault vía CSI Driver
-  - path: deployment-secrets-patch.yaml
-    target:
-      kind: Deployment
-      name: sri-facturacion-service
+- path: configmap-patch.yaml
+  target:
+    kind: ConfigMap
+    name: sri-facturacion-config
+- path: deployment-secrets-patch.yaml
+  target:
+    kind: Deployment
+    name: sri-facturacion-service-deployment
+#- path: hpa-patch.yaml
+#  target:
+#    kind: HorizontalPodAutoscaler
+#    name: sri-facturacion-service-hpa
 
-# Imagen desde Azure Container Registry (ACR)
+# Imagen real del microservicio en ACR (az acr build / pipeline CI).
+# El pull de los nodos usa la kubelet identity (AcrPull via bootstrap-acr-rbac-azure.sh).
 images:
-  - name: sri-facturacion-service
-    newName: <ACR_NAME>.azurecr.io/sri-facturacion-service
-    newTag: "1.0.0"
+- name: sri-facturacion-service
+  newName: sriacrtfm23c5.azurecr.io/sri-facturacion-service
+  newTag: a1519f9579bcf2487ff48fd5cadeb966551feaf3
 
 commonLabels:
   cloud: azure-aks

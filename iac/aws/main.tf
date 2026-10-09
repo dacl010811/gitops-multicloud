@@ -13,14 +13,14 @@ terraform {
     }
   }
 
-  # Estado remoto en S3 con locking en DynamoDB.
-  # Reemplazar bucket y dynamodb_table por los recursos reales antes de 'init'.
+  # Estado remoto en S3 con locking nativo (use_lockfile).
+  # Requiere Terraform >= 1.10. El bucket debe existir antes de 'init'.
   backend "s3" {
-    bucket         = "sri-gitops-tfstate"
-    key            = "aws/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "sri-gitops-tflock"
-    encrypt        = true
+    bucket      = "sri-gitops-tfstate"
+    key         = "aws/terraform.tfstate"
+    region      = "us-east-1"
+    encrypt     = true
+    use_lockfile = true
   }
 }
 
@@ -66,6 +66,10 @@ module "eks" {
   # CIDRs con acceso al API server (kubectl). Por defecto, el CIDR de la VPC
   # por defecto (donde vive la EC2 de ejecución); sobreescribible por variable.
   api_access_cidrs = length(var.api_access_cidrs) > 0 ? var.api_access_cidrs : [data.aws_vpc.default.cidr_block]
+
+  # Identidades humanas con acceso admin al clúster por consola web
+  # (access entries declarativos; ver recursos en el módulo).
+  admin_principal_arns = var.admin_principal_arns
 }
 
 # ============================================

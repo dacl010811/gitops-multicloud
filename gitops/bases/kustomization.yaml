@@ -9,7 +9,7 @@ commonLabels:
   app.kubernetes.io/part-of: sri-gitops-multicloud
 
 resources:
-  - deployment.yaml
-  - service.yaml
+  - deployment.yml
+  - service.yml
   - configmap.yaml
-  - hpa.yaml
+  - hpa.yml

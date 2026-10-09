@@ -3,6 +3,7 @@ name: CI/CD - SRI Facturación Service
 # Objetivo: pipeline completo en <15 min (test -> build/push multi-cloud -> bump de tag GitOps)
 on:
   push:
+    # Producción: el pipeline solo corre en main (la rama feature fue mergeada)
     branches: [main]
     paths:
       - "app/**"
@@ -45,7 +46,10 @@ jobs:
           cache-dependency-path: app/requirements.txt
 
       - name: Install dependencies
-        run: pip install --no-cache-dir -r requirements.txt
+        # Sin --no-cache-dir: setup-python cachea ~/.cache/pip entre corridas
+        # (con --no-cache-dir la carpeta nunca existe y el post-step de cache
+        # falla el job aunque los tests esten verdes)
+        run: pip install -r requirements.txt
 
       - name: Run tests
         run: pytest -v --cov=. --cov-report=term-missing
@@ -61,6 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Dual-cloud: ECR (AWS) + ACR (Azure). Ambas federaciones OIDC activas.
         cloud: [aws, azure]
     steps:
       - uses: actions/checkout@v4
@@ -141,6 +146,7 @@ jobs:
       - name: Bump image tag in overlays
         run: |
           (cd gitops/overlays/aws-eks && kustomize edit set image ${{ env.IMAGE_NAME }}=*:${{ env.IMAGE_TAG }})
+          # ACR sriacrtfm23c5 operativa (iac/azure/registry/): bump también en azure-aks
           (cd gitops/overlays/azure-aks && kustomize edit set image ${{ env.IMAGE_NAME }}=*:${{ env.IMAGE_TAG }})
 
       - name: Commit & push manifest changes
@@ -152,5 +158,9 @@ jobs:
             echo "Sin cambios en manifiestos"
           else
             git commit -m "ci: bump image tag to ${IMAGE_TAG} [skip ci]"
+            # El checkout esta fijado al commit que disparo la corrida; en
+            # re-runs la rama remota puede haber avanzado -> integrar antes
+            # de empujar o el push se rechaza con non-fast-forward.
+            git pull --rebase origin ${{ github.ref_name }}
             git push
           fi

@@ -6,19 +6,39 @@ metadata:
     # AWS Load Balancer Controller (ALB) - Ingress de capa 7
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    # SESION 2026-10-03: solo HTTP 80. El 443 requiere certificado ACM
+    # (deuda documentada: en produccion, ACM + HTTPS 443 obligatorio).
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
     alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
 spec:
   ingressClassName: alb
+  #rules:
+  #  - host: api.sri.ec.gob.ec
+  #    http:
+  #      paths:
+  #        - path: /
+  #          pathType: Prefix
+  #          backend:
+  #            service:
+  #              # FIX 2026-10-03: el Service real es 'sri-facturacion-service-svc'
+  #              # (bases/service.yml). El nombre anterior apuntaba a un recurso
+  #              # inexistente: ALB con target group vacio (404 eterno).
+  #              name: sri-facturacion-service-svc
+  #              port:
+  #                name: http
+
+  # Directo al DNS del ALB sin Hostname en el Header
   rules:
-    - host: api.sri.ec.gob.ec
-      http:
+    - http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: sri-facturacion-service
+                # FIX 2026-10-03: el Service real es 'sri-facturacion-service-svc'
+                # (bases/service.yml). El nombre anterior apuntaba a un recurso
+                # inexistente: ALB con target group vacio (404 eterno).
+                name: sri-facturacion-service-svc
                 port:
                   name: http

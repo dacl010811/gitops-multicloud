@@ -27,7 +27,9 @@ spec:
     spec:
       containers:
         - name: sri-facturacion-service-deployment
-          image: ghcr.io/tu-usuario/sri-facturacion-service:latest
+          # Nombre lógico: cada overlay lo redirige a su registry real
+          # (ECR/ACR) vía el transformer 'images:' de su kustomization.yaml
+          image: sri-facturacion-service:latest
           ports:
             - containerPort: 5000
               protocol: TCP
@@ -36,12 +38,22 @@ spec:
               valueFrom:
                 configMapKeyRef:
                   name: sri-facturacion-config
-                  key: environment
+                  key: ENVIRONMENT
             - name: CLOUD_PROVIDER
               valueFrom:
                 configMapKeyRef:
                   name: sri-facturacion-config
-                  key: cloud_provider
+                  key: CLOUD_PROVIDER
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sri-facturacion-config
+                  key: CLUSTER_NAME
+            - name: CLOUD_REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: sri-facturacion-config
+                  key: CLOUD_REGION
           resources:
             requests:
               memory: "256Mi"
