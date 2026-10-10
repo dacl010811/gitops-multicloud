@@ -682,6 +682,11 @@ opcion5() {
     return 0
 }
 
+opcion6() {
+    echo -e "\n${VERDE}[ Ejecutando FASE 6 — GitOps: la aplicación sin secretos (~3 min) ]${NC}"
+    configurar_region
+}
+
 # ============================================================
 # FUNCIÓN AUXILIAR: Pausa para leer antes de volver al menú
 # ============================================================
@@ -726,6 +731,12 @@ while true; do
             ;;
         4)
             opcion4
+            ;;
+        5)
+            opcion5
+            ;;
+        6)
+            opcion6
             ;;
         0)
             if confirmar_salida; then
