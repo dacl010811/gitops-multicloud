@@ -13,7 +13,7 @@ from datetime import datetime
 app = FastAPI(
     title="SRI Facturación Service",
     description="Microservicio de facturación electrónica - Demostración GitOps Multicloud",
-    version="13.0.0",
+    version="14.0.0",
     contact={
         "name": "TFM UNIR - GitOps Multicloud",
         "email": "dev@sri-facturacion.dev"
@@ -34,8 +34,8 @@ app.add_middleware(
 async def root():
     """Endpoint raíz"""
     return {
-        "message": "SRI Facturación Service API 13.0.0",
-        "version": "13.0.0",
+        "message": "SRI Facturación Service API 14.0.0",
+        "version": "14.0.0",
         "status": "running"
     }
 
@@ -78,7 +78,7 @@ async def get_version(request: Request):
     cluster_name = os.getenv("CLUSTER_NAME", "unknown")
     
     return {
-        "version": "13.0.0",
+        "version": "14.0.0",
         "cloud": cloud_provider,
         "cluster": cluster_name,
         "hostname": socket.gethostname(),
