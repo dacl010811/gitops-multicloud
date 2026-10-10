@@ -60,15 +60,17 @@ mostrar_menu() {
     echo -e " ${VERDE}2.${NC} Fase 2 - [ Aprovisionar ArgoCD + METRICS SERVER ]"
     echo -e " ${VERDE}3.${NC} Fase 3 - [ Aprovisionar — Secretos SSM + CSI + IRSA ]"
     echo -e " ${VERDE}4.${NC} Fase 4 - [ Aprovisionar - LB Controller + IRSA (~5 min): Incluye el IMPORT del OIDC Provider ]"
-    echo -e " ${VERDE}5.${NC} Fase 5 - [ Aprovisionar — GitOps: la aplicación con secretos (~3 min) ]"
+    echo -e " ${VERDE}5.${NC} Fase 5 - [ Aprovisionar — GitOps: la aplicación con secretos  ]"
     echo -e " ${VERDE}6.${NC} Fase 6 - [ Verificar — Demo de la cadena SSM -> CSI -> env ]"
+    echo -e " ${VERDE}7.${NC} Fase 7 - [ Aprovisionar - Demo ON: commit/push Ingress ALB + HPA 5% y espera el ADDRESS ]"
+    echo -e " ${VERDE}8.${NC} Fase 8 - [ Carga - Pruebas hey sobre Ingress ALB + HPA 5% + monitoreo en vivo ]"
+    echo -e " ${VERDE}9.${NC} Fase 9 - [ Pendiente - bucle pipeline GitOps (ocurre en GitHub: PR + merge + Actions + ArgoCD) ]"
+    echo -e " ${VERDE}10.${NC} Fase 10 - [ Cierre - Demo OFF + prune ALB + destroys ordenados (lb-controller -> secrets-csi -> cluster) ]"
     echo -e " ${AMARILLO}0.${NC} Salir"
     echo -e "${AZUL}========================================================================================================================${NC}"
 }
 
-# ============================================================
-# FUNCIONES DE CADA OPCIÓN (placeholders para que agregues tu lógica)
-# ============================================================
+# Funciones del menu principal
 
 opcion1() {
     echo -e "\n${VERDE}[ Ejecutando FASE 1 - Aprovisionando Cluster Principal ]${NC}"
@@ -685,7 +687,6 @@ opcion5() {
     return 0
 }
 
-
 opcion6() {
     echo -e "\n${VERDE}[ Ejecutando FASE 6 — GitOps: Verificación de secretos (~3 min) ]${NC}"
 
@@ -835,6 +836,648 @@ opcion6() {
     return 0
 }
 
+opcion7() {
+    echo -e "\n${VERDE}[ Ejecutando FASE 7 — Demo ON: commit/push Ingress ALB + HPA 5% y espera el ADDRESS (~3 min) ]${NC}"
+
+    configurar_region
+
+    # --- Parámetros de la Fase 7 (nombres confirmados en manifiestos y fases previas) ---
+    local OVERLAY_KUST="gitops/overlays/aws-eks/kustomization.yaml"   # relativo al repo (paths git)
+    local OVERLAY_DIR="$REPO_ROOT/gitops/overlays/aws-eks"            # absoluto (kubectl kustomize)
+    local APP_NAME="sri-facturacion-aws-eks"
+    local NS_APP="sri-facturacion"
+    local DEPLOY_LB="aws-load-balancer-controller"   # kube-system (Fase 4)
+    local BRANCH_ESPERADA="main"                     # ArgoCD targetRevision + rama del pipeline
+    local COMMIT_MSG="demo: FASE 7 ON - Ingress ALB + hpa-patch 5% (overlay aws-eks)"
+    local TIMEOUT_ALB=300      # Esperado: ADDRESS aparece (~2-3 min)
+
+    # --- Validaciones previas: herramientas (esta fase commitea: entra git) ---
+    local cmd
+    for cmd in git aws kubectl; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo -e "${ROJO}[ERROR]${NC} '$cmd' no está instalado o no está en el PATH."
+            leer_enter
+            return 1
+        fi
+    done
+
+    # --- [1/6] Precondiciones Git: rama correcta + edición manual del overlay pendiente ---
+    echo -e "\n${AZUL}[1/6] Precondiciones Git${NC}"
+    local rama
+    rama=$(git -C "$REPO_ROOT" branch --show-current)
+    echo "Rama actual: ${rama:-(detached HEAD)}"
+    if [ "$rama" != "$BRANCH_ESPERADA" ]; then
+        echo -e "${ROJO}[ERROR]${NC} Debes estar en '${BRANCH_ESPERADA}': ArgoCD vigila targetRevision '${BRANCH_ESPERADA}'"
+        echo -e "${ROJO}(un commit en otra rama sería invisible para el clúster) y el pipeline solo dispara con main.${NC}"
+        leer_enter
+        return 1
+    fi
+
+    # Debe existir AL MENOS una modificación sin commitear: la edición manual del overlay.
+    if [ -z "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+        echo -e "${ROJO}[ERROR]${NC} No hay cambios sin commitear."
+        echo -e "${ROJO}Primero edita MANUALMENTE ${OVERLAY_KUST}: descomenta '- ingress.yaml' (resources)${NC}"
+        echo -e "${ROJO}y el patch 'hpa-patch.yaml' (patches) — FASE 7.1 del runbook. Luego vuelve a la opción 7.${NC}"
+        echo -e "${AMARILLO}(Si ya commiteaste pero el push falló, haz 'git push' a mano.)${NC}"
+        leer_enter
+        return 1
+    fi
+    if ! git -C "$REPO_ROOT" status --porcelain | grep -q "$OVERLAY_KUST"; then
+        echo -e "${ROJO}[ERROR]${NC} El cambio pendiente NO incluye ${OVERLAY_KUST}."
+        echo -e "${ROJO}Esta fase solo commitea el overlay aws-eks; revisa qué estás haciendo.${NC}"
+        leer_enter
+        return 1
+    fi
+    # Aviso suave si hay OTROS archivos modificados: no entrarán en este commit.
+    local otros
+    otros=$(git -C "$REPO_ROOT" status --porcelain | grep -v "$OVERLAY_KUST" || true)
+    if [ -n "$otros" ]; then
+        echo -e "${AMARILLO}[WARN]${NC} Hay otros cambios sin commitear que NO entrarán en este commit:"
+        echo "$otros"
+    fi
+
+    # --- [2/6] git diff en pantalla + confirmación (la pausa didáctica GitOps) ---
+    echo -e "\n${AZUL}[2/6] git diff: el cambio que ArgoCD va a sincronizar${NC}"
+    git -C "$REPO_ROOT" --no-pager diff -- "$OVERLAY_KUST"
+
+    local respuesta="" intentos=0
+    while [ "$intentos" -lt 5 ]; do
+        read -p "Revise los cambios del Ingress+HPA antes de continuar (s/n): " respuesta
+        case "$respuesta" in
+            [sS]|[sS][iI])
+                break
+                ;;
+            [nN]|[nN][oO])
+                echo -e "${AMARILLO}Operación cancelada: corrige el archivo y vuelve a ejecutar la opción 7.${NC}"
+                leer_enter
+                return 0
+                ;;
+            *)
+                echo -e "${AMARILLO}Responde s o n.${NC}"
+                intentos=$((intentos + 1))
+                ;;
+        esac
+    done
+    if [ "$intentos" -ge 5 ]; then
+        echo -e "${AMARILLO}Demasiados intentos inválidos: operación cancelada.${NC}"
+        leer_enter
+        return 0
+    fi
+
+    # --- [3/6] Puerta de seguridad del render: el commit SOLO sale si el overlay compila
+    #     y trae el Ingress + el umbral didáctico 5% (lección del YAML huérfano) ---
+    echo -e "\n${AZUL}[3/6] Validación del render Kustomize (antes de commitear)${NC}"
+    local render
+    if ! render=$(kubectl kustomize "$OVERLAY_DIR" 2>&1); then
+        echo -e "${ROJO}[ERROR]${NC} El overlay NO compila (kubectl kustomize falló):"
+        echo "$render" | tail -n 10
+        echo -e "${ROJO}NO se commiteó nada. Los items descomentados deben quedar DENTRO de${NC}"
+        echo -e "${ROJO}'resources:' / 'patches:' con guion a columna 0, target a 2 y kind/name a 4.${NC}"
+        leer_enter
+        return 1
+    fi
+    if ! echo "$render" | grep -q "^kind: Ingress$"; then
+        echo -e "${ROJO}[ERROR]${NC} El render no contiene 'kind: Ingress': el descomentado no quedó efectivo. NO se commiteó nada."
+        leer_enter
+        return 1
+    fi
+    if ! echo "$render" | grep -q "averageUtilization: 5"; then
+        echo -e "${ROJO}[ERROR]${NC} El render no trae el umbral didáctico 'averageUtilization: 5' (hpa-patch). NO se commiteó nada."
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} Render válido: Ingress presente + HPA con umbral 5%."
+
+    # --- [4/6] Precondiciones del clúster (fail-fast ANTES de publicar el commit) ---
+    echo -e "\n${AZUL}[4/6] kubeconfig + preflight del clúster${NC}"
+    # terraform se usa solo para leer el output 'cluster_name'; si no está
+    # instalado, el fallback mantiene el nombre por defecto del proyecto.
+    local cluster_name
+    cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
+    [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
+
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+        echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
+        leer_enter
+        return 1
+    fi
+    echo -e "Contexto actual: $(kubectl config current-context)"
+
+    if ! kubectl get crd applications.argoproj.io >/dev/null 2>&1; then
+        echo -e "${ROJO}[ERROR]${NC} ArgoCD no está instalado (CRD applications.argoproj.io ausente). Ejecuta la Fase 2."
+        leer_enter
+        return 1
+    fi
+    if ! kubectl get application "$APP_NAME" -n argocd >/dev/null 2>&1; then
+        echo -e "${ROJO}[ERROR]${NC} La Application '${APP_NAME}' no existe. Ejecuta la Fase 5."
+        leer_enter
+        return 1
+    fi
+    # Precondición dura: sin controller el Ingress jamás recibe ADDRESS
+    # (y la espera de abajo se quemaría entera).
+    if ! kubectl get deployment "$DEPLOY_LB" -n kube-system >/dev/null 2>&1; then
+        echo -e "${ROJO}[ERROR]${NC} AWS Load Balancer Controller no detectado (Fase 4): sin él el ALB no se crea."
+        leer_enter
+        return 1
+    fi
+
+    # --- [5/6] Commit + push automatizados (SOLO el overlay aws-eks) ---
+    echo -e "\n${AZUL}[5/6] git add/commit/push (${OVERLAY_KUST})${NC}"
+    if ! git -C "$REPO_ROOT" add -- "$OVERLAY_KUST"; then
+        echo -e "${ROJO}[ERROR]${NC} git add falló."
+        leer_enter
+        return 1
+    fi
+    if ! git -C "$REPO_ROOT" commit -m "$COMMIT_MSG"; then
+        echo -e "${ROJO}[ERROR]${NC} git commit falló."
+        leer_enter
+        return 1
+    fi
+    git -C "$REPO_ROOT" log --oneline -1
+    if ! git -C "$REPO_ROOT" push; then
+        echo -e "${ROJO}[ERROR]${NC} git push falló (¿origin/${BRANCH_ESPERADA} desactualizado? haz 'git pull --ff-only' y reintenta la opción 7)."
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} Cambio publicado en origin/${BRANCH_ESPERADA}: ArgoCD lo sincronizará en segundos."
+
+    # --- [6/6] Refresh duro de ArgoCD + espera acotada del ADDRESS del ALB ---
+    # En vez de 'kubectl -n sri-facturacion get ingress -w' (watch infinito):
+    # sondeo con timeout para poder verificar el resultado.
+    echo -e "\n${AZUL}[6/6] Refresh=hard de ArgoCD + espera del ADDRESS del ALB${NC}"
+    if ! kubectl -n argocd annotate application "$APP_NAME" argocd.argoproj.io/refresh=hard --overwrite; then
+        echo -e "${ROJO}[ERROR]${NC} No se pudo anotar la Application (refresh=hard)."
+        leer_enter
+        return 1
+    fi
+
+    local espera=0 alb_dns=""
+    while [ "$espera" -lt "$TIMEOUT_ALB" ]; do
+        alb_dns=$(kubectl -n "$NS_APP" get ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+        [ -n "$alb_dns" ] && break
+        sleep 10
+        espera=$((espera + 10))
+        echo -e "${AMARILLO}  Esperando ADDRESS del ALB... (${espera}s)${NC}"
+    done
+
+    kubectl -n "$NS_APP" get ingress
+    if [ -n "$alb_dns" ]; then
+        echo -e "\n${VERDE}Fase 7 completada: ALB activo -> http://${alb_dns}${NC}"
+        echo -e "${AMARILLO}El ALB factura desde ahora: Importante: La FASE 10 (opción 8) lo apaga ANTES de destruir el clúster principal.${NC}"
+        echo -e "Prueba rápida: curl -s http://${alb_dns}/health"
+    else
+        echo -e "\n${ROJO}[ERROR]${NC} Sin ADDRESS tras ${TIMEOUT_ALB}s."
+        echo -e "${ROJO}Diagnóstico: kubectl -n argocd describe application ${APP_NAME} | tail -n 20${NC}"
+        leer_enter
+        return 1
+    fi
+
+    leer_enter
+    return 0
+}
+
+opcion8() {
+    echo -e "\n${VERDE}[ Ejecutando FASE 8 — Pruebas de carga: hey contra el ALB + monitoreo HPA/pods en vivo (~3 min) ]${NC}"
+
+    configurar_region
+
+    # --- Parámetros de la Fase 8 ---
+    local NS_APP="sri-facturacion"
+    local DEPLOY_NAME="sri-facturacion-service-deployment"
+    local DURACION="120s"      # hey -z: duración fija de la prueba
+    local CONEXIONES=50        # hey -c: workers concurrentes
+    local INTERVALO=10         # segundos entre snapshots de monitoreo
+    local MARGEN=40            # colchón de seguridad tras la duración nominal
+
+    # --- Validaciones previas: herramientas (hey se verifica con command -v:
+    #     no tiene flag -version ni binarios oficiales publicados) ---
+    local cmd
+    for cmd in aws kubectl hey curl; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo -e "${ROJO}[ERROR]${NC} '$cmd' no está instalado o no está en el PATH."
+            if [ "$cmd" = "hey" ]; then
+                echo -e "${ROJO}Instálalo con: go install github.com/rakyll/hey@latest (o brew install hey).${NC}"
+            fi
+            leer_enter
+            return 1
+        fi
+    done
+
+    # --- [1/4] Precondición dura: el ALB debe estar ONLINE (lo enciende la Fase 7) ---
+    echo -e "\n${AZUL}[1/5] Precondición: Ingress con ADDRESS (Fase 7 ON)${NC}"
+    # terraform se usa solo para leer el output 'cluster_name'; si no está
+    # instalado, el fallback mantiene el nombre por defecto del proyecto.
+    local cluster_name
+    cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
+    [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
+
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+        echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
+        leer_enter
+        return 1
+    fi
+    echo -e "Contexto actual: $(kubectl config current-context)"
+
+    local alb_dns
+    alb_dns=$(kubectl -n "$NS_APP" get ingress -o jsonpath='{.items[0].status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+    if [ -z "$alb_dns" ]; then
+        echo -e "${ROJO}[ERROR]${NC} No hay Ingress con ADDRESS en '${NS_APP}': el ALB no está ONLINE."
+        echo -e "${ROJO}Ejecuta primero la Fase 7 (opción 7): edita el overlay, confirma el diff y espera el ADDRESS.${NC}"
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} ALB ONLINE: http://${alb_dns}"
+
+    # Sonda HTTP previa: el overlay aws-eks es catch-all (sin regla host), así que
+    # el DNS pelado debe responder 200; si responde 404, la regla host volvió a
+    # activarse y hey necesitaría -host <host>.
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${alb_dns}/health")
+    echo "Sonda HTTP previa: GET /health -> ${http_code}"
+    if [ "$http_code" != "200" ]; then
+        echo -e "${ROJO}[ERROR]${NC} La sonda no devolvió 200 (¿regla host activa en el Ingress?)."
+        echo -e "${ROJO}Con regla host, hey necesita: hey -host <host> -z ${DURACION} -c ${CONEXIONES} http://${alb_dns}/health${NC}"
+        leer_enter
+        return 1
+    fi
+
+    # Aviso suave si el deployment no parte de 3 pods (el HPA escala desde ahí)
+    local pods_ready
+    pods_ready=$(kubectl -n "$NS_APP" get deployment "$DEPLOY_NAME" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+    pods_ready=${pods_ready:-0}
+    if [ "$pods_ready" -lt 3 ]; then
+        echo -e "${AMARILLO}[WARN]${NC} El deployment tiene ${pods_ready}/3 pods ready (esperado 3 tras la Fase 5)."
+    fi
+
+    # --- [2/4] hey en SEGUNDO PLANO con log propio (se muestra al final limpio):
+    #     si imprimiera en pantalla, su salida se entrelazaría con el monitoreo ---
+    echo -e "\n${AZUL}[2/5] Lanzando hey: hey -z ${DURACION} -c ${CONEXIONES} http://${alb_dns}/health${NC}"
+    local hey_log
+    hey_log=$(mktemp "${TMPDIR:-/tmp}/hey_fase8.XXXXXX.log")
+    hey -z "$DURACION" -c "$CONEXIONES" "http://${alb_dns}/health" > "$hey_log" 2>&1 &
+    local hey_pid=$!
+    echo -e "hey ejecutándose en segundo plano (PID ${hey_pid}); log temporal: ${hey_log}"
+    echo -e "${AMARILLO}Si cancelas con Ctrl+C, hey también muere (mismo grupo de procesos); el log queda en disco.${NC}"
+
+    # Port-Forwarding de ArgoCD para facilitar el acceso a la interfaz gráfica
+    echo -e "\n${AZUL}[3/5] Port-Forwarding de ArgoCD para facilitar el acceso a la interfaz gráfica${NC}"
+    clave_argocd=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 --decode)
+    
+    kubectl port-forward svc/argocd-server 8080:443 -n argocd &
+    local argocd_pid=$!
+    echo -e "Port-Forwarding de ArgoCD ejecutándose en segundo plano (PID ${argocd_pid})"
+    echo -e "${AMARILLO}Si cancelas con Ctrl+C, el Port-Forwarding también muere (mismo grupo de procesos).${NC}"
+    
+    echo -e "${AMARILLO}Accede a la interfaz gráfica de ArgoCD con: http://localhost:8080${NC}"
+    echo -e "Clave de ArgoCD: ${clave_argocd}" 
+
+
+    # --- [3/4] Monitoreo acotado: snapshots de HPA + pods cada ${INTERVALO}s ---
+    # En vez de 'kubectl get hpa -w' / 'get pods -w' (watch infinito que nunca
+    # devuelve el menú): sondeo acotado a la duración de hey + margen.
+    echo -e "\n${AZUL}[4/5] Monitoreo en vivo: HPA y pods cada ${INTERVALO}s (esperado: 3 -> 5 -> 7 pods)${NC}"
+    echo -e "${AZUL}--- t=0s (estado base) ---${NC}"
+    kubectl -n "$NS_APP" get hpa
+    kubectl -n "$NS_APP" get pods
+
+    local limite=$(( ${DURACION%s} + MARGEN ))
+    local espera=0
+    while [ "$espera" -lt "$limite" ]; do
+        kill -0 "$hey_pid" 2>/dev/null || break
+        sleep "$INTERVALO"
+        espera=$((espera + INTERVALO))
+        echo -e "\n${AZUL}--- t=${espera}s ---${NC}"
+        kubectl -n "$NS_APP" get hpa
+        kubectl -n "$NS_APP" get pods
+    done
+
+    # --- [4/4] Resultados de hey + evidencia target-type ip ---
+    echo -e "\n${AZUL}[5/5] Resultados de la prueba de carga${NC}"
+    local hey_rc=""
+    if kill -0 "$hey_pid" 2>/dev/null; then
+        echo -e "${AMARILLO}[WARN]${NC} hey sigue corriendo tras ${limite}s (PID ${hey_pid}); sus resultados quedaron en ${hey_log}"
+    else
+        wait "$hey_pid" 2>/dev/null
+        hey_rc=$?
+        echo -e "${VERDE}[OK]${NC} hey finalizó (exit=${hey_rc}). Resultados:"
+        echo "----------------------------------------------------------------"
+        cat "$hey_log"
+        echo "----------------------------------------------------------------"
+    fi
+
+    kubectl -n "$NS_APP" get hpa
+    kubectl -n "$NS_APP" get pods
+
+    # Joya de la fase (target-type ip): los targets del ALB son IPs de PODS,
+    # no de nodos — el grupo de destino se actualiza solo al escalar.
+    local lb_arn
+    lb_arn=$(aws elbv2 describe-load-balancers --region "$AWS_REGION" \
+        --query "LoadBalancers[?DNSName=='${alb_dns}'].LoadBalancerArn | [0]" --output text)
+    if [ -n "$lb_arn" ] && [ "$lb_arn" != "None" ]; then
+        echo -e "\n${AZUL}Target group del ALB (target-type ip: las IPs son de pods)${NC}"
+        local tg
+        for tg in $(aws elbv2 describe-target-groups --region "$AWS_REGION" --load-balancer-arn "$lb_arn" --query "TargetGroups[].TargetGroupArn" --output text); do
+            aws elbv2 describe-target-health --region "$AWS_REGION" --target-group-arn "$tg" \
+                --query "TargetHealthDescriptions[].[Target.Id,TargetHealth.State]" --output table
+        done
+    fi
+
+    echo -e "\n${VERDE}Fase 8 completada: carga aplicada y monitoreada.${NC}"
+    echo -e "${AMARILLO}El HPA tarda ~5 min SIN carga en reducir réplicas (stabilization window): es normal verlo alto un rato.${NC}"
+    echo -e "${AMARILLO}Costo: la prueba en sí es minima, no crea recursos nuevos. El ALB sigue corriendo hasta la Fase 10 (opción 10).${NC}"
+
+    leer_enter
+    return 0
+}
+
+opcion9(){
+    echo -e "\n${AZUL}[9/10] Fase 9 (bucle pipeline GitOps) ocurre en GitHub: PR + merge a main + Actions + bump + ArgoCD sync.${NC}"
+    echo -e "${AMARILLO}Sigue DEMO_STACK_AWS_FINAL.md FASE 9.${NC}"
+    leer_enter
+    return 0
+}
+
+# ============================================================
+# FUNCIONES AUXILIARES FASE 10
+# ============================================================
+# Destroy idempotente de un módulo Terraform: destruye solo si el state
+# tiene recursos; tras el destroy verifica 'terraform state list' y
+# reintenta acotado si quedó residuo. Si ya es 0, lo omite sin tocar nada.
+destruir_modulo() {
+    local dir="$1" nombre="$2"
+    local intentos_max=3 intento=1 n
+
+    n=$(terraform -chdir="$dir" state list 2>/dev/null | grep -c .)
+    n=${n:-0}
+    if [ "$n" -eq 0 ]; then
+        echo -e "${AMARILLO}[${nombre}] state list = 0: ya destruido, se omite (idempotente).${NC}"
+        return 0
+    fi
+    echo -e "${AZUL}[${nombre}] ${n} recurso(s) en state -> terraform destroy...${NC}"
+
+    while [ "$intento" -le "$intentos_max" ]; do
+        if terraform -chdir="$dir" destroy -auto-approve -input=false -lock-timeout=60s; then
+            n=$(terraform -chdir="$dir" state list 2>/dev/null | grep -c .)
+            n=${n:-0}
+            if [ "$n" -eq 0 ]; then
+                echo -e "${VERDE}[OK]${NC} [${nombre}] state list = 0: destrucción confirmada."
+                return 0
+            fi
+            echo -e "${AMARILLO}[WARN]${NC} [${nombre}] destroy OK pero quedan ${n} recurso(s) en state; reintento $((intento + 1))/${intentos_max}..."
+        else
+            echo -e "${ROJO}[ERROR]${NC} [${nombre}] terraform destroy falló (intento ${intento}/${intentos_max})."
+        fi
+        intento=$((intento + 1))
+        [ "$intento" -le "$intentos_max" ] && sleep 15
+    done
+
+    n=$(terraform -chdir="$dir" state list 2>/dev/null | grep -c .)
+    n=${n:-0}
+    if [ "$n" -eq 0 ]; then
+        return 0
+    fi
+    echo -e "${ROJO}[ERROR]${NC} [${nombre}] quedaron ${n} recurso(s) tras ${intentos_max} intentos. Revísalo a mano antes de continuar."
+    return 1
+}
+
+# Verificación final del cierre: los tres states deben estar vacíos, el
+# clúster debe dar ResourceNotFound y no debe quedar ningún ALB (huérfano).
+# Devuelve el número de hallazgos en rojo (0 = cierre limpio).
+verificacion_final() {
+    local cluster_name="$1" fallos=0 n
+
+    echo -e "\n${AZUL}[verificación final] States, clúster y ALB${NC}"
+    local dir
+    for dir in "$REPO_ROOT/iac/aws/lb-controller" "$REPO_ROOT/iac/aws/secrets-csi" "$REPO_ROOT/iac/aws"; do
+        n=$(terraform -chdir="$dir" state list 2>/dev/null | grep -c .)
+        n=${n:-0}
+        if [ "$n" -eq 0 ]; then
+            echo -e "  ${VERDE}[OK]${NC} ${dir#$REPO_ROOT/}: state vacío (0 recursos)"
+        else
+            echo -e "  ${ROJO}[X]${NC} ${dir#$REPO_ROOT/}: ${n} recurso(s) aún en state"
+            fallos=$((fallos + 1))
+        fi
+    done
+
+    if aws eks describe-cluster --region "$AWS_REGION" --name "$cluster_name" >/dev/null 2>&1; then
+        echo -e "  ${ROJO}[X]${NC} eks describe-cluster: el clúster SIGUE EXISTIENDO"
+        fallos=$((fallos + 1))
+    else
+        echo -e "  ${VERDE}[OK]${NC} eks describe-cluster: ResourceNotFound (clúster eliminado)"
+    fi
+
+    n=$(aws elbv2 describe-load-balancers --region "$AWS_REGION" --output text 2>/dev/null | grep -c .)
+    n=${n:-0}
+    if [ "$n" -eq 0 ]; then
+        echo -e "  ${VERDE}[OK]${NC} elbv2: 0 load balancers (sin ALB huérfanos)"
+    else
+        echo -e "  ${ROJO}[X]${NC} elbv2: quedan registros (${n} línea(s)) — revisa ALB huérfanos"
+        fallos=$((fallos + 1))
+    fi
+
+    return "$fallos"
+}
+
+opcion10() {
+    echo -e "\n${VERDE}[ Ejecutando FASE 10 — Cierre FinOps: Demo OFF + prune del ALB + destroys ordenados (~10 min) ]${NC}"
+
+    configurar_region
+
+    # --- Parámetros de la Fase 10 ---
+    local OVERLAY_KUST="gitops/overlays/aws-eks/kustomization.yaml"
+    local OVERLAY_ABS="$REPO_ROOT/gitops/overlays/aws-eks/kustomization.yaml"
+    local OVERLAY_DIR="$REPO_ROOT/gitops/overlays/aws-eks"
+    local APP_NAME="sri-facturacion-aws-eks"
+    local NS_APP="sri-facturacion"
+    local BRANCH_ESPERADA="main"
+    local COMMIT_MSG="demo: FASE 10 OFF - Ingress ALB + hpa-patch comentados (cierre FinOps)"
+    local TIMEOUT_PRUNE=240     # Esperado: prune + borrado del ALB (~2-3 min)
+
+    # --- Validaciones previas: herramientas (esta fase commitea y destruye: entra git) ---
+    local cmd
+    for cmd in git aws kubectl terraform; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo -e "${ROJO}[ERROR]${NC} '$cmd' no está instalado o no está en el PATH."
+            leer_enter
+            return 1
+        fi
+    done
+
+    # --- Preflight: el clúster debe estar VIVO (el prune y el destroy de
+    #     lb-controller lo requieren). Si ya está muerto: modo solo verificación. ---
+    echo -e "\n${AZUL}[preflight] kubeconfig + estado del clúster${NC}"
+    # terraform se usa solo para leer el output 'cluster_name'; si no está
+    # instalado, el fallback mantiene el nombre por defecto del proyecto.
+    local cluster_name
+    cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
+    [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
+
+    local cluster_vivo=1
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+        cluster_vivo=0
+    fi
+    if [ "$cluster_vivo" -eq 1 ] && ! kubectl get --raw='/readyz' >/dev/null 2>&1; then
+        cluster_vivo=0
+    fi
+
+    if [ "$cluster_vivo" -eq 0 ]; then
+        echo -e "${AMARILLO}[WARN]${NC} El clúster '${cluster_name}' no responde: asumiendo cierre ya realizado."
+        echo -e "${AMARILLO}Pasando a la verificación final de estados (sin destroys).${NC}"
+        verificacion_final "$cluster_name"
+        local rc=$?
+        leer_enter
+        return $rc
+    fi
+    echo -e "Contexto actual: $(kubectl config current-context)"
+
+    # --- [1/6] Overlay aws-eks: apagar Ingress + hpa-patch (commit/push, idempotente) ---
+    echo -e "\n${AZUL}[1/6] Overlay aws-eks: apagar Ingress + hpa-patch${NC}"
+    local render
+    if ! render=$(kubectl kustomize "$OVERLAY_DIR" 2>&1); then
+        echo -e "${ROJO}[ERROR]${NC} El overlay NO compila ni en su estado actual:"
+        echo "$render" | tail -n 10
+        echo -e "${ROJO}Corrige el YAML a mano antes del cierre. NO se destruyó nada.${NC}"
+        leer_enter
+        return 1
+    fi
+
+    local overlay_on=0
+    if echo "$render" | grep -q "^kind: Ingress$" && echo "$render" | grep -q "averageUtilization: 5"; then
+        overlay_on=1
+    fi
+
+    if [ "$overlay_on" -eq 1 ]; then
+        echo "Overlay ON (Ingress + umbral 5% activos) -> comentando automáticamente..."
+        # Convención del repo: comentar = prefijo '#' a columna 0 de cada línea
+        # del bloque (sed de macOS/BSD; la puerta de render de abajo valida el resultado).
+        sed -i '' -E 's|^[[:space:]]*- ingress\.yaml$|#- ingress.yaml|' "$OVERLAY_ABS"
+        sed -i '' -E '/^[[:space:]]*- path: hpa-patch\.yaml$/,/^[[:space:]]*name: sri-facturacion-service-hpa$/ s|^|#|' "$OVERLAY_ABS"
+
+        # Puerta de seguridad inversa: el render debe quedar OFF antes de commitear
+        if ! render=$(kubectl kustomize "$OVERLAY_DIR" 2>&1); then
+            echo -e "${ROJO}[ERROR]${NC} El comentado automático rompió el overlay:"
+            echo "$render" | tail -n 10
+            echo -e "${ROJO}NO se commiteó nada. Restaura con: git checkout -- ${OVERLAY_KUST}${NC}"
+            leer_enter
+            return 1
+        fi
+        if echo "$render" | grep -q "^kind: Ingress$" || echo "$render" | grep -q "averageUtilization: 5"; then
+            echo -e "${ROJO}[ERROR]${NC} Tras comentar, el render SIGUE teniendo Ingress/umbral 5%."
+            echo -e "${ROJO}NO se commiteó nada. Comenta a mano siguiendo la convención del archivo.${NC}"
+            leer_enter
+            return 1
+        fi
+        echo -e "${VERDE}[OK]${NC} Render OFF validado (sin Ingress; HPA vuelve a umbrales base 70/80)."
+    else
+        echo -e "${AMARILLO}Overlay ya está OFF (sin Ingress ni umbral 5%): nada que comentar.${NC}"
+    fi
+
+    # Publicar SOLO si el overlay tiene cambios sin commitear (auto-comentado o manual previo)
+    if git -C "$REPO_ROOT" status --porcelain | grep -q "$OVERLAY_KUST"; then
+        local rama
+        rama=$(git -C "$REPO_ROOT" branch --show-current)
+        if [ "$rama" != "$BRANCH_ESPERADA" ]; then
+            echo -e "${ROJO}[ERROR]${NC} Hay cambios del overlay sin commitear pero estás en '${rama:-(detached)}', no en '${BRANCH_ESPERADA}'."
+            echo -e "${ROJO}Cámbiate a main para que ArgoCD vea el OFF. NO se destruyó nada.${NC}"
+            leer_enter
+            return 1
+        fi
+        if ! git -C "$REPO_ROOT" add -- "$OVERLAY_KUST"; then
+            echo -e "${ROJO}[ERROR]${NC} git add falló."
+            leer_enter
+            return 1
+        fi
+        if ! git -C "$REPO_ROOT" commit -m "$COMMIT_MSG"; then
+            echo -e "${ROJO}[ERROR]${NC} git commit falló."
+            leer_enter
+            return 1
+        fi
+        git -C "$REPO_ROOT" log --oneline -1
+        if ! git -C "$REPO_ROOT" push; then
+            echo -e "${ROJO}[ERROR]${NC} git push falló. El OFF no llegó a origin: ArgoCD no prunea. Resuélvelo antes de continuar."
+            leer_enter
+            return 1
+        fi
+        echo -e "${VERDE}[OK]${NC} OFF publicado en origin/${BRANCH_ESPERADA}."
+    elif [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+        echo -e "${AMARILLO}[WARN]${NC} Hay cambios sin commitear en OTROS archivos (no se publican aquí):"
+        git -C "$REPO_ROOT" status --porcelain
+    fi
+
+    # --- [2/6] Refresh=hard de ArgoCD para que prunee YA ---
+    echo -e "\n${AZUL}[2/6] Refresh=hard de ArgoCD${NC}"
+    if kubectl get application "$APP_NAME" -n argocd >/dev/null 2>&1; then
+        if ! kubectl -n argocd annotate application "$APP_NAME" argocd.argoproj.io/refresh=hard --overwrite; then
+            echo -e "${ROJO}[ERROR]${NC} No se pudo anotar la Application (refresh=hard)."
+            leer_enter
+            return 1
+        fi
+        echo -e "${VERDE}[OK]${NC} refresh=hard anotado: ArgoCD prunea el Ingress en su próximo ciclo."
+    else
+        echo -e "${AMARILLO}[WARN]${NC} La Application '${APP_NAME}' no existe: se asume que no hay Ingress que prunear."
+    fi
+
+    # --- [3/6] GATE FinOps: el Ingress y el ALB deben morir ANTES que el clúster ---
+    echo -e "\n${AZUL}[3/6] GATE FinOps: esperando prune del Ingress y borrado del ALB${NC}"
+    local espera=0 ing_ok=0 alb_ok=0 ing_out n_alb
+    while [ "$espera" -lt "$TIMEOUT_PRUNE" ]; do
+        ing_out=$(kubectl -n "$NS_APP" get ingress 2>&1)
+        echo "$ing_out" | grep -q "No resources found" && ing_ok=1
+        n_alb=$(aws elbv2 describe-load-balancers --region "$AWS_REGION" --output text 2>/dev/null | grep -c .)
+        n_alb=${n_alb:-0}
+        [ "$n_alb" -eq 0 ] && alb_ok=1
+        [ "$ing_ok" -eq 1 ] && [ "$alb_ok" -eq 1 ] && break
+        sleep 10
+        espera=$((espera + 10))
+        echo -e "  Esperando prune... (ingress_borrado=${ing_ok}, lineas_elbv2=${n_alb}, ${espera}s)"
+    done
+
+    if [ "$ing_ok" -ne 1 ] || [ "$alb_ok" -ne 1 ]; then
+        echo -e "\n${ROJO}[ERROR]${NC} GATE FinOps: tras ${TIMEOUT_PRUNE}s -> ingress_borrado=${ing_ok}, alb_vacio=${alb_ok}."
+        echo -e "${ROJO}REGLA DE ORO: el Ingress/ALB debe morir ANTES que el clúster (si no, el ALB queda huérfano facturando).${NC}"
+        echo -e "${ROJO}NO se ejecutó NINGÚN destroy. Diagnóstico:${NC}"
+        echo -e "${ROJO}  kubectl -n argocd describe application ${APP_NAME} | tail -n 20${NC}"
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} Prune confirmado: sin Ingress en el cluster y 0 load balancers."
+
+    # --- [4/6] Destroy lb-controller (SU state lee data sources del clúster: primero SIEMPRE) ---
+    echo -e "\n${AZUL}[4/6] Destroy lb-controller (4 recursos: rol + policy + attachment + OIDC importado)${NC}"
+    if ! destruir_modulo "$REPO_ROOT/iac/aws/lb-controller" "lb-controller"; then
+        leer_enter
+        return 1
+    fi
+
+    # --- [5/6] Destroy secrets-csi (tolera OIDC ya borrado por el paso anterior) ---
+    echo -e "\n${AZUL}[5/6] Destroy secrets-csi (8 recursos: OIDC provider + rol + policy + attachment + SSM x3 + ...)${NC}"
+    if ! destruir_modulo "$REPO_ROOT/iac/aws/secrets-csi" "secrets-csi"; then
+        leer_enter
+        return 1
+    fi
+
+    # --- [6/6] Destroy cluster principal iac/aws (~4 min: VPC, SG, roles, control plane, node group) ---
+    echo -e "\n${AZUL}[6/6] Destroy cluster principal iac/aws (11 recursos)${NC}"
+    if ! destruir_modulo "$REPO_ROOT/iac/aws" "iac/aws"; then
+        leer_enter
+        return 1
+    fi
+
+    verificacion_final "$cluster_name"
+    local rc_final=$?
+
+    if [ "$rc_final" -eq 0 ]; then
+        echo -e "\n${VERDE}Fase 10 completada: cierre FinOps ordenado, sin huérfanos.${NC}"
+        echo -e "${VERDE}Permanente (no tocado): usuario terraform-ci + políticas, ECR, OIDC GitHub, rol github-actions-ecr-push.${NC}"
+        echo -e "${AMARILLO}Costo a partir de ahora: \$0/h. El repo queda en el punto de partida del guion (100% reproducible).${NC}"
+    else
+        echo -e "\n${AMARILLO}[WARN]${NC} Destroys ejecutados pero la verificación final reporta ${rc_final} hallazgo(s) en rojo (arriba)."
+    fi
+
+    leer_enter
+    return $rc_final
+}
+
 # ============================================================
 # FUNCIÓN AUXILIAR: Pausa para leer antes de volver al menú
 # ============================================================
@@ -865,7 +1508,7 @@ confirmar_salida() {
 # ============================================================
 while true; do
     mostrar_menu
-    read -p "Selecciona una opción [0-6]: " opcion
+    read -p "Selecciona una opción [0-10]: " opcion || break
 
     case "$opcion" in
         1)
@@ -886,13 +1529,25 @@ while true; do
         6)
             opcion6
             ;;
+        7)
+            opcion7
+            ;;
+        8)
+            opcion8
+            ;;
+        9)
+            opcion9
+            ;;
+        10)
+            opcion10
+            ;;
         0)
             if confirmar_salida; then
                 break
             fi
             ;;
         *)
-            echo -e "\n${ROJO}[ERROR]${NC} Opción inválida. Por favor, elige un número entre 0 y 6."
+            echo -e "\n${ROJO}[ERROR]${NC} Opción inválida. Por favor, elige un número entre 0 y 10."
             sleep 2
             ;;
     esac
