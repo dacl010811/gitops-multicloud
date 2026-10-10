@@ -51,16 +51,19 @@ configurar_region() {
 # ============================================================
 mostrar_menu() {
     clear
-    echo -e "${AZUL}========================================${NC}"
-    echo -e "${AZUL}       MENÚ DE AUTOMATIZACIÓN           ${NC}"
-    echo -e "${AZUL}========================================${NC}"
+    echo -e "${AZUL}========================================================================================================================${NC}"
+    echo -e "${AZUL}                                              MENÚ DE AUTOMATIZACIÓN                                                    ${NC}"
+    echo -e "${AMARILLO} Menu de Opciones : AWS EKS - GitOps Multicloud.                                                                    ${NC}"
+    echo -e "${AMARILLO} Directorio Trabajo : ./${REPO_ROOT##*/}                                                                            ${NC}"
+    echo -e "${AZUL}========================================================================================================================${NC}"
     echo -e " ${VERDE}1.${NC} Fase 1 - [ Aprovisionar Cluster Principal AWS iac/aws (VPC, SG, Roles, Control Plane, Node Group) --> 11 Resources ]"
     echo -e " ${VERDE}2.${NC} Fase 2 - [ Aprovisionar ArgoCD + METRICS SERVER ]"
     echo -e " ${VERDE}3.${NC} Fase 3 - [ Aprovisionar — Secretos SSM + CSI + IRSA ]"
     echo -e " ${VERDE}4.${NC} Fase 4 - [ Aprovisionar - LB Controller + IRSA (~5 min): Incluye el IMPORT del OIDC Provider ]"
     echo -e " ${VERDE}5.${NC} Fase 5 - [ Aprovisionar — GitOps: la aplicación con secretos (~3 min) ]"
+    echo -e " ${VERDE}6.${NC} Fase 6 - [ Verificar — Demo de la cadena SSM -> CSI -> env ]"
     echo -e " ${AMARILLO}0.${NC} Salir"
-    echo -e "${AZUL}========================================${NC}"
+    echo -e "${AZUL}========================================================================================================================${NC}"
 }
 
 # ============================================================
@@ -682,6 +685,156 @@ opcion5() {
     return 0
 }
 
+
+opcion6() {
+    echo -e "\n${VERDE}[ Ejecutando FASE 6 — GitOps: Verificación de secretos (~3 min) ]${NC}"
+
+    configurar_region
+
+    # --- Parámetros de la Fase 6 (nombres confirmados en manifiestos y Fase 3) ---
+    local NS_APP="sri-facturacion"
+    local DEPLOY_NAME="sri-facturacion-service-deployment"
+    # Secret nativo que sincroniza el driver CSI (secretObjects/syncSecret).
+    # NOTA: es el 'orphaned resource' que ArgoCD reporta — lo crea el driver
+    # en runtime, no vive en Git (por diseño).
+    local SECRET_NAME="sri-facturacion-db"
+    local MOUNT_PATH="/mnt/secrets-store"  # Volumen del driver CSI dentro del contenedor
+    local TIMEOUT_READY=60                 # Segundos máximos esperando >=1 pod Ready
+
+    # --- Validaciones previas: herramientas (fase de verificación: solo aws/kubectl) ---
+    local cmd
+    for cmd in aws kubectl; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo -e "${ROJO}[ERROR]${NC} '$cmd' no está instalado o no está en el PATH."
+            leer_enter
+            return 1
+        fi
+    done
+
+    # --- Preflight: kubeconfig apuntando al clúster de la Fase 1 ---
+    echo -e "\n${AZUL}[preflight] kubeconfig + estado del deployment${NC}"
+    # terraform se usa solo para leer el output 'cluster_name'; si no está
+    # instalado, el fallback mantiene el nombre por defecto del proyecto.
+    local cluster_name
+    cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
+    [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
+
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+        echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
+        leer_enter
+        return 1
+    fi
+    echo -e "Contexto actual: $(kubectl config current-context)"
+
+    # Precondición dura: el deployment de la app existe (lo crea la Fase 5)
+    if ! kubectl -n "$NS_APP" get deployment "$DEPLOY_NAME" >/dev/null 2>&1; then
+        echo -e "${ROJO}[ERROR]${NC} No existe el deployment '${DEPLOY_NAME}' en '${NS_APP}'."
+        echo -e "${ROJO}Ejecuta primero la Fase 5 (opción 5).${NC}"
+        leer_enter
+        return 1
+    fi
+
+    # Al menos 1 pod Ready para poder hacer 'kubectl exec' (espera acotada)
+    local espera=0 pods_ready=0
+    while [ "$espera" -lt "$TIMEOUT_READY" ]; do
+        pods_ready=$(kubectl -n "$NS_APP" get deployment "$DEPLOY_NAME" -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+        pods_ready=${pods_ready:-0}
+        [ "$pods_ready" -ge 1 ] && break
+        sleep 5
+        espera=$((espera + 5))
+    done
+    if [ "$pods_ready" -lt 1 ]; then
+        echo -e "${ROJO}[ERROR]${NC} El deployment no tiene pods Ready. Si están en ContainerCreating, revisa el driver CSI/IRSA (Fase 3)."
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} Deployment con ${pods_ready} pod(s) Ready."
+
+    # --- [1/4] Montaje directo: parámetros SSM como archivos (volumen CSI) ---
+    echo -e "\n${AZUL}[1/4] Montaje directo: kubectl exec deploy/${DEPLOY_NAME} -- ls -l ${MOUNT_PATH}/${NC}"
+    local mount_out
+    mount_out=$(kubectl -n "$NS_APP" exec deploy/"$DEPLOY_NAME" -- ls -l "$MOUNT_PATH/" 2>&1)
+    echo "$mount_out"
+
+    # Esperado: DB_HOST  DB_PASSWORD  DB_USER (symlinks del driver)
+    local clave faltantes=""
+    for clave in DB_HOST DB_PASSWORD DB_USER; do
+        echo "$mount_out" | grep -q "$clave" || faltantes="$faltantes $clave"
+    done
+    if [ -n "$faltantes" ]; then
+        echo -e "${ROJO}[ERROR]${NC} Faltan archivos en el montaje:${faltantes}"
+        echo -e "${ROJO}Diagnóstico: kubectl -n ${NS_APP} describe pod <pod> | grep -A5 Events${NC}"
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} Los 3 archivos están montados (DB_HOST, DB_PASSWORD, DB_USER)."
+
+    # --- [2/4] Secret nativo sincronizado por el driver (alimenta el envFrom) ---
+    echo -e "\n${AZUL}[2/4] Secret nativo: kubectl get secret ${SECRET_NAME}${NC}"
+    if ! kubectl -n "$NS_APP" get secret "$SECRET_NAME"; then
+        echo -e "${ROJO}[ERROR]${NC} No existe el Secret '${SECRET_NAME}' (lo crea el driver CSI con secretObjects/syncSecret)."
+        leer_enter
+        return 1
+    fi
+
+    local secret_keys
+    secret_keys=$(kubectl -n "$NS_APP" get secret "$SECRET_NAME" -o go-template='{{len .data}}' 2>/dev/null)
+    secret_keys=${secret_keys:-0}
+    if [ "$secret_keys" -ne 3 ]; then
+        echo -e "${AMARILLO}[WARN]${NC} El Secret tiene ${secret_keys} clave(s) (esperado: 3 -> DB_HOST, DB_PASSWORD, DB_USER)."
+    else
+        echo -e "${VERDE}[OK]${NC} Secret con 3 claves (DB_HOST, DB_PASSWORD, DB_USER)."
+    fi
+
+    # --- [3/4] La cadena hasta el proceso: variables de entorno del contenedor ---
+    # Demo sin exponer el password: se muestran solo DB_USER/DB_HOST y se
+    # verifica la PRESENCIA de DB_PASSWORD (sin imprimir su valor).
+    echo -e "\n${AZUL}[3/4] Cadena hasta el proceso: env | grep -E 'DB_(USER|HOST)'${NC}"
+    local env_out
+    env_out=$(kubectl -n "$NS_APP" exec deploy/"$DEPLOY_NAME" -- env 2>/dev/null)
+    if [ -z "$env_out" ]; then
+        echo -e "${ROJO}[ERROR]${NC} No se pudo leer el entorno del pod (kubectl exec falló)."
+        leer_enter
+        return 1
+    fi
+    echo "$env_out" | grep -E '^DB_(USER|HOST)=' || true
+
+    local env_faltantes=""
+    for clave in DB_HOST DB_PASSWORD DB_USER; do
+        echo "$env_out" | grep -q "^${clave}=" || env_faltantes="$env_faltantes $clave"
+    done
+    if [ -n "$env_faltantes" ]; then
+        echo -e "${ROJO}[ERROR]${NC} Variables NO inyectadas al proceso:${env_faltantes}"
+        echo -e "${ROJO}Revisa envFrom/secretKeyRef en el patch del deployment (Fases 3/5).${NC}"
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} DB_HOST y DB_USER visibles arriba; DB_PASSWORD presente (valor oculto por seguridad)."
+
+    # --- [4/4] Fuente de verdad: SSM Parameter Store (sin exponer valores) ---
+    echo -e "\n${AZUL}[4/4] Fuente de verdad: aws ssm describe-parameters (prefijo /sri-facturacion)${NC}"
+    local ssm_out
+    ssm_out=$(aws ssm describe-parameters --region "$AWS_REGION" \
+        --parameter-filters "Key=Name,Option=BeginsWith,Values=/sri-facturacion" \
+        --query "Parameters[].[Name,Type]" --output table 2>&1)
+    echo "$ssm_out"
+
+    local n_total n_secure
+    n_total=$(echo "$ssm_out" | grep -c '/sri-facturacion/')
+    n_secure=$(echo "$ssm_out" | grep -c 'SecureString')
+    if [ "${n_total:-0}" -lt 3 ] || [ "${n_secure:-0}" -lt 3 ]; then
+        echo -e "${ROJO}[ERROR]${NC} Se esperaban 3 parámetros SecureString bajo /sri-facturacion (encontrados: ${n_total:-0}, SecureString: ${n_secure:-0})."
+        echo -e "${ROJO}Ejecuta la Fase 3 (opción 3): módulo iac/aws/secrets-csi.${NC}"
+        leer_enter
+        return 1
+    fi
+    echo -e "${VERDE}[OK]${NC} ${n_total} parámetros SSM, todos SecureString."
+
+    echo -e "\n${VERDE}Fase 6 verificada: cadena completa SSM -> driver CSI -> Secret nativo -> env del pod.${NC}"
+    leer_enter
+    return 0
+}
+
 # ============================================================
 # FUNCIÓN AUXILIAR: Pausa para leer antes de volver al menú
 # ============================================================
@@ -712,7 +865,7 @@ confirmar_salida() {
 # ============================================================
 while true; do
     mostrar_menu
-    read -p "Selecciona una opción [0-4]: " opcion
+    read -p "Selecciona una opción [0-6]: " opcion
 
     case "$opcion" in
         1)
@@ -727,13 +880,19 @@ while true; do
         4)
             opcion4
             ;;
+        5)
+            opcion5
+            ;;
+        6)
+            opcion6
+            ;;
         0)
             if confirmar_salida; then
                 break
             fi
             ;;
         *)
-            echo -e "\n${ROJO}[ERROR]${NC} Opción inválida. Por favor, elige un número entre 0 y 4."
+            echo -e "\n${ROJO}[ERROR]${NC} Opción inválida. Por favor, elige un número entre 0 y 6."
             sleep 2
             ;;
     esac
