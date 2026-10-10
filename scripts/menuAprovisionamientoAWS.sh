@@ -1063,7 +1063,7 @@ opcion8() {
         fi
     done
 
-    # --- [1/4] Precondición dura: el ALB debe estar ONLINE (lo enciende la Fase 7) ---
+    # --- [1/5] Precondición dura: el ALB debe estar ONLINE (lo enciende la Fase 7) ---
     echo -e "\n${AZUL}[1/5] Precondición: Ingress con ADDRESS (Fase 7 ON)${NC}"
     # terraform se usa solo para leer el output 'cluster_name'; si no está
     # instalado, el fallback mantiene el nombre por defecto del proyecto.
@@ -1109,30 +1109,74 @@ opcion8() {
         echo -e "${AMARILLO}[WARN]${NC} El deployment tiene ${pods_ready}/3 pods ready (esperado 3 tras la Fase 5)."
     fi
 
-    # --- [2/4] hey en SEGUNDO PLANO con log propio (se muestra al final limpio):
+    # --- [2/5] hey en SEGUNDO PLANO con log propio (se muestra al final limpio):
     #     si imprimiera en pantalla, su salida se entrelazaría con el monitoreo ---
     echo -e "\n${AZUL}[2/5] Lanzando hey: hey -z ${DURACION} -c ${CONEXIONES} http://${alb_dns}/health${NC}"
-    local hey_log
-    hey_log=$(mktemp "${TMPDIR:-/tmp}/hey_fase8.XXXXXX.log")
+    # Log en ruta fija y TRUNCADO al inicio: mktemp con sufijo (.log tras las X)
+    # NO funciona en macOS/BSD (las X deben ir al final) y dejaba hey_log vacío;
+    # la ruta fija además hace la opción re-lanzable sin mezclar corridas.
+    local hey_log="${TMPDIR:-/tmp}/hey_fase8.log"
+    if ! : > "$hey_log"; then
+        echo -e "${ROJO}[ERROR]${NC} No se pudo preparar el log ${hey_log}."
+        leer_enter
+        return 1
+    fi
+    # hey huérfano de una corrida anterior (p. ej. saliste del menú mientras
+    # corría): se detiene para no duplicar la carga al relanzar.
+    local hey_viejo
+    hey_viejo=$(pgrep -f "hey -z .*${alb_dns}/health" 2>/dev/null || true)
+    if [ -n "$hey_viejo" ]; then
+        echo -e "${AMARILLO}[WARN]${NC} hey huérfano de una corrida anterior (PID ${hey_viejo}): se detiene antes de relanzar."
+        kill $hey_viejo 2>/dev/null
+        sleep 2
+    fi
     hey -z "$DURACION" -c "$CONEXIONES" "http://${alb_dns}/health" > "$hey_log" 2>&1 &
     local hey_pid=$!
-    echo -e "hey ejecutándose en segundo plano (PID ${hey_pid}); log temporal: ${hey_log}"
+    echo -e "hey ejecutándose en segundo plano (PID ${hey_pid}); log: ${hey_log}"
     echo -e "${AMARILLO}Si cancelas con Ctrl+C, hey también muere (mismo grupo de procesos); el log queda en disco.${NC}"
 
     # Port-Forwarding de ArgoCD para facilitar el acceso a la interfaz gráfica
     echo -e "\n${AZUL}[3/5] Port-Forwarding de ArgoCD para facilitar el acceso a la interfaz gráfica${NC}"
     clave_argocd=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 --decode)
     
-    kubectl port-forward svc/argocd-server 8080:443 -n argocd &
-    local argocd_pid=$!
-    echo -e "Port-Forwarding de ArgoCD ejecutándose en segundo plano (PID ${argocd_pid})"
+    # Re-lanzamientos (2ª, 3ª vez...): si un port-forward de argocd-server YA
+    # ocupa el 8080, NO se mata ni se duplica — se reutiliza el proceso
+    # original y esta fase NO se hace cargo de él (el trap solo libera el PID
+    # que la propia fase levantó). Si el puerto lo ocupa otra aplicación, se
+    # omite el port-forward con aviso (la prueba de carga NO depende de él).
+    local pf_existente="" pid8080
+    for pid8080 in $(lsof -ti :8080 2>/dev/null || true); do
+        if ps -p "$pid8080" -o command= 2>/dev/null | grep -q "kubectl.*port-forward.*argocd-server"; then
+            pf_existente="$pid8080"
+            break
+        fi
+    done
+
+    local argocd_pid=""
+    if [ -n "$pf_existente" ]; then
+        echo -e "${AMARILLO}[OK]${NC} Ya existe un port-forward de ArgoCD (PID ${pf_existente}): se reutiliza y queda vivo tras esta fase."
+    elif [ -n "$pid8080" ]; then
+        echo -e "${AMARILLO}[WARN]${NC} El puerto 8080 lo ocupa otra aplicación: se OMITE el port-forward de ArgoCD."
+    else
+        kubectl port-forward svc/argocd-server 8080:443 -n argocd &
+        argocd_pid=$!
+        # Trap RETURN: libera SOLO el PID que esta fase levantó, al terminar por
+        # CUALQUIER camino (éxito, error o cancelación).
+        trap '[ -n "$argocd_pid" ] && kill "$argocd_pid" 2>/dev/null; trap - RETURN' RETURN
+    fi
+
+    if [ -n "$pf_existente" ] || [ -n "$argocd_pid" ]; then
+        echo -e "Port-Forwarding de ArgoCD disponible en http://localhost:8080 (PID ${pf_existente:-$argocd_pid})"
+    else
+        echo -e "${AMARILLO}Sin port-forward de ArgoCD (puerto 8080 ocupado por terceros).${NC}"
+    fi
     echo -e "${AMARILLO}Si cancelas con Ctrl+C, el Port-Forwarding también muere (mismo grupo de procesos).${NC}"
     
     echo -e "${AMARILLO}Accede a la interfaz gráfica de ArgoCD con: http://localhost:8080${NC}"
     echo -e "Clave de ArgoCD: ${clave_argocd}" 
 
 
-    # --- [3/4] Monitoreo acotado: snapshots de HPA + pods cada ${INTERVALO}s ---
+    # --- [4/5] Monitoreo acotado: snapshots de HPA + pods cada ${INTERVALO}s ---
     # En vez de 'kubectl get hpa -w' / 'get pods -w' (watch infinito que nunca
     # devuelve el menú): sondeo acotado a la duración de hey + margen.
     echo -e "\n${AZUL}[4/5] Monitoreo en vivo: HPA y pods cada ${INTERVALO}s (esperado: 3 -> 5 -> 7 pods)${NC}"
@@ -1151,7 +1195,7 @@ opcion8() {
         kubectl -n "$NS_APP" get pods
     done
 
-    # --- [4/4] Resultados de hey + evidencia target-type ip ---
+    # --- [5/5] Resultados de hey + evidencia target-type ip ---
     echo -e "\n${AZUL}[5/5] Resultados de la prueba de carga${NC}"
     local hey_rc=""
     if kill -0 "$hey_pid" 2>/dev/null; then
@@ -1185,6 +1229,7 @@ opcion8() {
     echo -e "\n${VERDE}Fase 8 completada: carga aplicada y monitoreada.${NC}"
     echo -e "${AMARILLO}El HPA tarda ~5 min SIN carga en reducir réplicas (stabilization window): es normal verlo alto un rato.${NC}"
     echo -e "${AMARILLO}Costo: la prueba en sí es minima, no crea recursos nuevos. El ALB sigue corriendo hasta la Fase 10 (opción 10).${NC}"
+    echo -e "${AMARILLO}Tip: el port-forward muere al terminar esta fase; para seguir usando la UI de ArgoCD: kubectl port-forward svc/argocd-server 8080:443 -n argocd${NC}"
 
     leer_enter
     return 0
