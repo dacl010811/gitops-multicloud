@@ -577,14 +577,16 @@ opcion5() {
     local rama
     rama=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
     if [ "$rama" != "$BRANCH" ]; then
-        echo -e "${ROJO}Estás en la rama '${rama}' y ArgoCD vigila '${BRANCH}': el commit sería invisible (targetRevision).${NC}"
+        echo -e "${ROJO}Estás en la rama ${rama} y ArgoCD vigila ${BRANCH}: el commit sería invisible (targetRevision).${NC}"
         echo "Cámbiate primero: git checkout ${BRANCH}"
         leer_enter; return 1
     fi
-    echo "Rama: ${VERDE}${rama}${NC} (la que ArgoCD vigila)"
+    
+    echo -e "Rama: ${VERDE}${rama}${NC} (la que ArgoCD vigila)"
+    
     if [ -z "$(git -C "$REPO_ROOT" status --porcelain -- "$OVERLAY_AZ" 2>/dev/null)" ]; then
-        echo -e "${ROJO}No hay cambios sin commitear en ${OVERLAY_AZ}.${NC}"
-        echo "Edita manualmente ${OVERLAY_KUST}: descomenta '- ingress.yaml' (línea 21) y guarda."
+        echo -e "${ROJO}No hay cambios sin commitear en rama actual: ${rama}.${NC}"
+        echo -e "${AMARILLO}Edita manualmente ${OVERLAY_KUST}: \ndescomenta '- ingress.yaml' (línea 21) y guarda.${NC}"
         leer_enter; return 1
     fi
 
