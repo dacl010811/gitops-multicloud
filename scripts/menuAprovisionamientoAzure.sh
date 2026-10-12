@@ -151,7 +151,7 @@ mostrar_menu() {
     echo -e " ${VERDE}3.${NC} Fase 2 - [ Aprovisionar - ArgoCD + Application azure-aks (metrics-server de fábrica en AKS) ]"
     echo -e " ${VERDE}4.${NC} Fase 3 - [ Verificar - Demo de la cadena Key Vault -> CSI -> Secret -> env ]"
     echo -e " ${VERDE}5.${NC} Fase 4 - [ Aprovisionar - Demo ON: commit/push Ingress AGIC + App Gateway y espera la IP ]"
-    echo -e " ${VERDE}6.${NC} Fase 5 - [ Carga - Pruebas hey sobre App Gateway + HPA 5% + monitoreo en vivo ]"
+    echo -e " ${VERDE}6.${NC} Fase 5 - [ Pruebas de Carga con hey sobre App Gateway + HPA 5% + monitoreo en vivo ]"
     echo -e " ${VERDE}7.${NC} Fase 6 - [ Pendiente - bucle pipeline GitOps (ocurre en GitHub: push + Actions + ArgoCD) ]"
     echo -e " ${VERDE}8.${NC} Fase 7 - [ Cierre - Demo OFF ritual + checkpoint + destroy único (iac/azure) -> \$0/h ]"
     echo -e " ${AMARILLO}0.${NC} Salir"
@@ -658,7 +658,7 @@ opcion5() {
     else
         echo -e "${AMARILLO}Sonda != 200. Si es 502: backend pool vacío -> el Ingress debe apuntar al Service 'sri-facturacion-service-svc' (incidente real, fix espejo AWS).${NC}"
     fi
-    echo -e "\n${MAGENTA}Browser (evidencia para el jurado): ventana de INCOGNITO con URL 'http://${gw_ip}/docs'${NC}"
+    echo -e "\n${MAGENTA}Browser: Ventana de INCOGNITO con URL 'http://${gw_ip}/docs'${NC}"
     echo -e "${MAGENTA}(HTTPS-First de Chrome/Safari promueve a https:// y el AppGW solo escucha HTTP:80 - Apéndice A).${NC}"
     echo -e "${AMARILLO}Nota FinOps: \$0 incremental - el AppGW ya facturaba desde la Fase 1 (nació con el clúster).${NC}"
     leer_enter
@@ -751,7 +751,7 @@ opcion6() {
     echo "  hey PID ${hey_pid} -> log: ${hey_log}"
 
     # ---- [4/6] Port-forward de ArgoCD (reutiliza uno existente; libera solo el PID propio al terminar) ----
-    echo -e "\n${CIAN}[4/6] Port-forward de ArgoCD (http://localhost:8082 -> UI para el jurado)${NC}"
+    echo -e "\n${CIAN}[4/6] Port-forward de ArgoCD (http://localhost:8080 -> UI para el jurado)${NC}"
     local pf_existente="" pid8080
     for pid8080 in $(lsof -ti :8080 2>/dev/null || true); do
         if ps -p "$pid8080" -o command= 2>/dev/null | grep -q "kubectl.*port-forward.*argocd-server"; then
@@ -771,6 +771,9 @@ opcion6() {
         trap '[ -n "$argocd_pid" ] && kill "$argocd_pid" 2>/dev/null; trap - RETURN' RETURN
     fi
     echo "  Clave admin: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 --decode; echo"
+    
+    clave_argocd=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 --decode; echo)
+    echo -e "${AMARILLO}Clave admin: ${clave_argocd}${NC}"
 
     # ---- [5/6] Monitoreo en vivo (snapshots acotados: -w jamás devolvería el menú) ----
     echo -e "\n${CIAN}[5/6] Monitoreo en vivo (HPA escalando 3 -> hasta 10; ~${DURACION_HEY} + margen)${NC}"
@@ -812,7 +815,7 @@ opcion7() {
     echo "  5. Verifica: curl -s http://<GW_IP>/api/v1/version | jq"
     echo "     -> version nueva, cloud=azure, cluster=${AZ_CLUSTER}, hostname del NUEVO ReplicaSet"
     echo ""
-    echo -e "${MAGENTA}Preguntas del jurado cubiertas: P25 (pipeline punta a punta), P26 ([skip ci] anti-bucle),${NC}"
+    echo -e "${MAGENTA}P25 (pipeline punta a punta), P26 ([skip ci] anti-bucle),${NC}"
     echo -e "${MAGENTA}P27 (drift -> OutOfSync -> ArgoCD revierte).${NC}"
     leer_enter
 }
@@ -824,7 +827,6 @@ opcion7() {
 # ============================================================
 destruir_modulo() {
     local dir="$1" nombre="$2"
-    local log_destroy="${TMPDIR:-/tmp}/tf_destroy_$(basename "$dir").log"
     echo -e "\n${MAGENTA}== Destroy: ${nombre} (${dir}) ==${NC}"
     if ! terraform -chdir="$dir" init -input=false >/dev/null 2>&1; then
         echo -e "${AMARILLO}init falló en ${nombre}: se omite (¿backend de §0.3 caído?).${NC}"
@@ -839,9 +841,10 @@ destruir_modulo() {
     echo "State con ${n} recurso(s). Destroy (puede tardar varios minutos)..."
     local i rc
     for i in 1 2 3; do
-        terraform -chdir="$dir" destroy -auto-approve -input=false -lock-timeout=60s > "$log_destroy" 2>&1
+        # Log completo de terraform destroy EN PANTALLA (sin redirección):
+        # rc captura el código real de terraform al no haber pipe.
+        terraform -chdir="$dir" destroy -auto-approve -input=false -lock-timeout=60s
         rc=$?
-        tail -15 "$log_destroy"
         n=$(terraform -chdir="$dir" state list 2>/dev/null | grep -c . || true)
         if [ "$rc" -eq 0 ] && [ "${n:-0}" -eq 0 ]; then
             echo -e "${VERDE}${nombre}: destroy completo (state a cero).${NC}"
@@ -941,7 +944,7 @@ verificacion_final_azure() {
 # ============================================================
 opcion8() {
     echo -e "\n${CIAN}[ Ejecutando FASE 7 - Cierre FinOps -> \$0/h ]${NC}"
-    echo -e "${MAGENTA}Orden: demo OFF (ritual) -> checkpoint anti-huérfano -> destroy único (iac/azure) -> verificación.${NC}"
+    echo -e "${MAGENTA}Orden: demo OFF (ritual) -> Checkpoint anti-huérfano -> destroy único (iac/azure) -> verificación.${NC}"
 
     # ---- [1/6] Rama correcta (si habrá commit) ----
     local rama
