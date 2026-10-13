@@ -39,3 +39,8 @@ output "kubeconfig" {
     }]
   })
 }
+
+output "oidc_issuer_url" {
+  description = "Issuer OIDC del clúster (URL con UUID propio — cambia en cada recreate)"
+  value       = azurerm_kubernetes_cluster.main.oidc_issuer_url
+}

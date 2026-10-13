@@ -55,6 +55,23 @@ resource "aws_eks_cluster" "main" {
     endpoint_private_access = true
     endpoint_public_access  = true
   }
+
+  # Modo de autenticacion API_AND_CONFIG_MAP: habilita ACCESS ENTRIES (el
+  # mecanismo moderno IAM->RBAC; el ConfigMap aws-auth queda como compatibilidad).
+  # Sin esto, el default del cluster es CONFIG_MAP y eks:CreateAccessEntry
+  # falla con InvalidRequestException (leccion sesion GitOps EKS 2026-09-23).
+  access_config {
+    authentication_mode = "API_AND_CONFIG_MAP"
+
+    # OBLIGATORIO declararlo explicito: es un bool Optional en el provider y
+    # su zero-value es false, asi que omitirlo hace que EKS NO cree la entrada
+    # automatica del creador (kubectl del creador falla con 401 aunque sea el
+    # que hizo el apply). Leccion empirica 2026-09-29: el bloque access_config
+    # por si solo desactiva el bootstrap que la API aplica por default cuando
+    # el bloque no existe. Sin access_config -> default true -> creador con
+    # entrada automatica; con access_config y sin este flag -> false -> nada.
+    bootstrap_cluster_creator_admin_permissions = true
+  }
   
   enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
   
@@ -76,6 +93,37 @@ resource "aws_vpc_security_group_ingress_rule" "eks_api" {
   to_port           = 443
   ip_protocol       = "tcp"
   description        = "Acceso HTTPS al API server de EKS (kubectl) desde ${each.value}"
+}
+
+# ============================================
+# ACCESS ENTRIES: acceso humano por consola web (IAM -> RBAC)
+# ============================================
+# El creador del clúster (terraform-ci) recibe su entrada automáticamente.
+# Estas entradas declarativas cubren a los operadores humanos: sin ellas,
+# tras cada destroy/apply habría que repetir a mano 'aws eks create-access-entry'
+# + 'associate-access-policy' (antipatrón imperativo).
+
+resource "aws_eks_access_entry" "admin" {
+  for_each = var.cloud_provider == "aws" ? toset(var.admin_principal_arns) : toset([])
+
+  cluster_name  = aws_eks_cluster.main[0].name
+  principal_arn = each.value
+}
+
+resource "aws_eks_access_policy_association" "admin" {
+  for_each = var.cloud_provider == "aws" ? toset(var.admin_principal_arns) : toset([])
+
+  cluster_name  = aws_eks_cluster.main[0].name
+  principal_arn = each.value
+
+  # Política administrada por AWS: equivalente a cluster-admin de Kubernetes.
+  policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+
+  access_scope {
+    type = "cluster"
+  }
+
+  depends_on = [aws_eks_access_entry.admin]
 }
 
 # ============================================

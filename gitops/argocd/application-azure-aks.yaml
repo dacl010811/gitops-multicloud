@@ -11,6 +11,7 @@ spec:
   project: sri-facturacion
   source:
     repoURL: https://github.com/dacl010811/gitops-multicloud.git
+    # Estado final del TFM: ArgoCD vigila main (rama de producción)
     targetRevision: main
     path: gitops/overlays/azure-aks
   destination:

@@ -12,6 +12,9 @@ spec:
     # Repo Helm de la comunidad Prometheus (Application "monitor")
     - https://prometheus-community.github.io/helm-charts
   destinations:
+    # El patrón App-of-Apps requiere que las child Applications vivan en el namespace argocd
+    - server: https://kubernetes.default.svc
+      namespace: argocd
     - server: https://kubernetes.default.svc
       namespace: sri-facturacion
     # Stack de observabilidad (Prometheus + Grafana)

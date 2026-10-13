@@ -17,7 +17,7 @@ variable "cluster_name" {
 variable "kubernetes_version" {
   description = "Versión de Kubernetes"
   type        = string
-  default     = "1.30"
+  default     = "1.35"
 }
 
 variable "environment" {
@@ -52,6 +52,12 @@ variable "node_role_arn" {
 
 variable "api_access_cidrs" {
   description = "CIDRs autorizados a alcanzar el API server de EKS (kubectl) vía el Security Group del clúster. Vacío = usar automáticamente el CIDR de la VPC por defecto."
+  type        = list(string)
+  default     = []
+}
+
+variable "admin_principal_arns" {
+  description = "ARNs de usuarios IAM humanos que administran el clúster vía consola web. Reciben access entry + AmazonEKSClusterAdminPolicy (declarativo en el módulo). Vacío = ninguno."
   type        = list(string)
   default     = []
 }

@@ -78,6 +78,12 @@ variable "api_access_cidrs" {
   default     = []
 }
 
+variable "admin_principal_arns" {
+  description = "ARNs de identidades IAM humanas (p.ej. user/k8sweb-admin) que reciben access entry + AmazonEKSClusterAdminPolicy en el clúster EKS. Vacío = solo el creador del clúster (que recibe su entrada automáticamente)."
+  type        = list(string)
+  default     = []
+}
+
 # ============================================
 # Variables específicas de Azure AKS
 # ============================================

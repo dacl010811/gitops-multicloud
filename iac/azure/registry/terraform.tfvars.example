@@ -1,0 +1,21 @@
+# ============================================
+# terraform.tfvars.example: Azure ACR Registry
+# Copiar a terraform.tfvars y ajustar si es necesario.
+#
+# El nombre del registry es UNICO GLOBAL en Azure (solo minusculas y
+# numeros, 5-50 chars). Convencion del proyecto: sriacr + tfm + 23c5
+# (sufijo del subscription id, misma regla que sritfstate23c5).
+# ============================================
+
+registry_name = "sriacrtfm23c5"
+
+# Se reutiliza el RG de plataforma (longevo, sobrevive al ciclo del cluster).
+resource_group_name = "sri-tfstate-rg"
+
+location = "eastus"
+
+tags = {
+  Project     = "sri-gitops-multicloud"
+  Environment = "platform"
+  ManagedBy   = "terraform"
+}
