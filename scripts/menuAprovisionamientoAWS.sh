@@ -24,6 +24,23 @@ AWS_REGION="us-east-1"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ============================================================
+# KUBECONFIG AISLADO POR NUBE (demos AWS + Azure en paralelo)
+# ~/.kube/config es estado GLOBAL del equipo con UNA sola posición
+# 'current-context': tanto aws eks update-kubeconfig como az aks
+# get-credentials hacen merge ahí y REESCRIBEN el contexto activo;
+# en paralelo, cada terminal roba el contexto de la otra (carrera
+# de estado compartido). Este menú opera SOLO sobre su archivo
+# dedicado: la env var KUBECONFIG la heredan todos los kubectl/helm
+# de este proceso y de los bootstraps que invoca (bootstrap-*-eks.sh).
+# Terraform no la usa (habla con las APIs de AWS con su propio perfil).
+# Para kubectl manual FUERA del menú, exporta la misma variable:
+#   export KUBECONFIG="$HOME/.kube/sri-eks-config.yaml"
+# ============================================================
+KUBECONFIG_FILE="${HOME}/.kube/sri-eks-config.yaml"
+export KUBECONFIG="${KUBECONFIG_FILE}"
+mkdir -p "$(dirname "${KUBECONFIG_FILE}")"
+
+# ============================================================
 # FUNCIÓN: Configurar la región AWS (global)
 # ============================================================
 configurar_region() {
@@ -55,6 +72,7 @@ mostrar_menu() {
     echo -e "${AZUL}                                              MENÚ DE AUTOMATIZACIÓN                                                    ${NC}"
     echo -e "${AMARILLO} Menu de Opciones : AWS EKS - GitOps Multicloud.                                                                    ${NC}"
     echo -e "${AMARILLO} Directorio Trabajo : ./${REPO_ROOT##*/}                                                                            ${NC}"
+    echo -e "${AMARILLO} KUBECONFIG aislado : ${ROJO}${KUBECONFIG_FILE}${NC}"
     echo -e "${AZUL}========================================================================================================================${NC}"
     echo -e " ${VERDE}1.${NC} Fase 1 - [ Aprovisionar Cluster Principal AWS iac/aws (VPC, SG, Roles, Control Plane, Node Group) --> 11 Resources ]"
     echo -e " ${VERDE}2.${NC} Fase 2 - [ Aprovisionar ArgoCD + METRICS SERVER ]"
@@ -170,7 +188,7 @@ opcion1() {
     cd "$REPO_ROOT" || return 1
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -221,7 +239,7 @@ opcion2() {
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
     echo -e "\n${AZUL}[0/2] kubeconfig: ${cluster_name} (${AWS_REGION})${NC}"
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -526,7 +544,7 @@ opcion4() {
     cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -586,7 +604,7 @@ opcion5() {
     cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -720,7 +738,7 @@ opcion6() {
     cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -956,7 +974,7 @@ opcion7() {
     cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -1071,7 +1089,7 @@ opcion8() {
     cluster_name=$(terraform -chdir="$REPO_ROOT/iac/aws" output -raw cluster_name 2>/dev/null)
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         echo -e "${ROJO}[ERROR]${NC} No se pudo actualizar el kubeconfig del clúster '${cluster_name}'."
         leer_enter
         return 1
@@ -1358,7 +1376,7 @@ opcion10() {
     [ -z "$cluster_name" ] && cluster_name="sri-eks-cluster"
 
     local cluster_vivo=1
-    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name"; then
+    if ! aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster_name" --kubeconfig "${KUBECONFIG_FILE}"; then
         cluster_vivo=0
     fi
     if [ "$cluster_vivo" -eq 1 ] && ! kubectl get --raw='/readyz' >/dev/null 2>&1; then

@@ -22,8 +22,24 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRIVER_NS="kube-system"
 DRIVER_CHART_VERSION="1.4.8"   # pineado (leccion 2026-10-04: chart "latest" trajo drift politica/controller)
 
-echo "==> PASO 0. Guards: cluster vivo, helm instalado, rol IRSA en el state"
-kubectl get nodes >/dev/null 2>&1 || { echo "ERROR: sin cluster accesible (kubectl get nodes fallo). Levanta el Bloque 1 primero."; exit 1; }
+echo "==> PASO 0. Guards: identidad del cluster, cluster vivo, helm, rol IRSA en el state"
+# Guard multicloud (demos AWS+Azure en paralelo): 'kubectl get nodes' pasa
+# contra CUALQUIER cluster; sin validar la IDENTIDAD, este script podria
+# instalar el driver en el AKS de la terminal vecina (carrera de contexto
+# de ~/.kube/config). El contexto EKS esperado es arn:...:cluster/sri-eks-cluster.
+EXPECTED_CLUSTER="sri-eks-cluster"
+CURRENT_CTX=$(kubectl config current-context 2>/dev/null || echo "")
+case "$CURRENT_CTX" in
+  *"$EXPECTED_CLUSTER"*) echo "    Contexto kubectl: $CURRENT_CTX (cluster EKS esperado)" ;;
+  *)
+    echo "ERROR: el contexto kubectl '$CURRENT_CTX' NO es el cluster EKS esperado (${EXPECTED_CLUSTER})." >&2
+    echo "       Aisla el kubeconfig de esta nube y reconecta antes de relanzar:" >&2
+    echo "         export KUBECONFIG=\"$HOME/.kube/sri-eks-config.yaml\"" >&2
+    echo "         aws eks update-kubeconfig --region us-east-1 --name ${EXPECTED_CLUSTER} --kubeconfig \"$KUBECONFIG\"" >&2
+    exit 1
+    ;;
+esac
+kubectl get nodes >/dev/null 2>&1 || { echo "ERROR: sin cluster accesible (kubectl get nodes fallo). Levanta el Bloque 1 primero o revisa KUBECONFIG (export KUBECONFIG=\"$HOME/.kube/sri-eks-config.yaml\")."; exit 1; }
 command -v helm >/dev/null 2>&1 || { echo "ERROR: helm no instalado"; exit 1; }
 ROLE_ARN=$(cd "$REPO_ROOT/iac/aws/secrets-csi" && terraform output -raw secrets_csi_role_arn)
 echo "    Rol IRSA del driver: $ROLE_ARN"

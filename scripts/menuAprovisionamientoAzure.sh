@@ -49,6 +49,24 @@ OVERLAY_AZ="$REPO_ROOT/gitops/overlays/azure-aks"
 OVERLAY_KUST="$OVERLAY_AZ/kustomization.yaml"
 
 # ============================================================
+# KUBECONFIG AISLADO POR NUBE (demos AWS + Azure en paralelo)
+# ~/.kube/config es estado GLOBAL del equipo con UNA sola posición
+# 'current-context': tanto az aks get-credentials como aws eks
+# update-kubeconfig hacen merge ahí y REESCRIBEN el contexto activo;
+# en paralelo, cada terminal roba el contexto de la otra (carrera
+# de estado compartido). Este menú opera SOLO sobre su archivo
+# dedicado: conectar_aks le escribe con --file y la env var KUBECONFIG
+# hace que TODOS los kubectl/helm de este proceso (y del port-forward)
+# lo lean. Terraform y az no la usan (hablan con las APIs de Azure
+# con ARM_*/az login).
+# Para kubectl manual FUERA del menú, exporta la misma variable:
+#   export KUBECONFIG="$HOME/.kube/sri-aks-config.yaml"
+# ============================================================
+KUBECONFIG_FILE="${HOME}/.kube/sri-aks-config.yaml"
+export KUBECONFIG="${KUBECONFIG_FILE}"
+mkdir -p "$(dirname "${KUBECONFIG_FILE}")"
+
+# ============================================================
 # FUNCIÓN: Verificar la sesión de Azure activa
 # ============================================================
 verificar_sesion_azure() {
@@ -76,7 +94,27 @@ conectar_aks() {
         echo -e "${ROJO}El clúster ${AZ_CLUSTER} no existe en ${AZ_RG}.${NC}"
         return 1
     fi
-    az aks get-credentials --resource-group "$AZ_RG" --name "$AZ_CLUSTER" --overwrite-existing
+    # --file: escribe SOLO el kubeconfig dedicado de este menú. Sin --file,
+    # az hace merge en ~/.kube/config y reescribe su current-context global,
+    # robándole el contexto a la terminal AWS en paralelo (carrera de
+    # estado compartido; lección de la demo AWS+Azure simultánea).
+    if ! az aks get-credentials --resource-group "$AZ_RG" --name "$AZ_CLUSTER" \
+        --file "$KUBECONFIG_FILE" --overwrite-existing; then
+        echo -e "${ROJO}No se pudo escribir el kubeconfig en ${KUBECONFIG_FILE}.${NC}"
+        return 1
+    fi
+    # Guard de identidad: kubectl opera contra el CONTEXTO ACTIVO y 'get nodes'
+    # pasa contra CUALQUIER cluster. Verifica que el contexto del archivo
+    # dedicado es el clúster AKS esperado antes de dejar operar a la fase.
+    local ctx
+    ctx=$(kubectl config current-context 2>/dev/null || echo "")
+    case "$ctx" in
+        *"$AZ_CLUSTER"*) return 0 ;;
+        *)
+            echo -e "${ROJO}El contexto kubectl '${ctx:-<vacío>}' NO es ${AZ_CLUSTER}: abortando para no operar otro clúster.${NC}"
+            return 1
+            ;;
+    esac
 }
 
 # ============================================================
@@ -145,6 +183,7 @@ mostrar_menu() {
     echo -e "${CIAN}                                              MENÚ DE AUTOMATIZACIÓN                                                    ${NC}"
     echo -e "${MAGENTA} Menu de Opciones : AZURE AKS - GitOps Multicloud.                                                                    ${NC}"
     echo -e "${MAGENTA} Directorio Trabajo : ./${REPO_ROOT##*/}                                                                            ${NC}"
+    echo -e "${MAGENTA} KUBECONFIG aislado : ${ROJO}${KUBECONFIG_FILE}${NC}"
     echo -e "${CIAN}========================================================================================================================${NC}"
     echo -e " ${VERDE}1.${NC} Fase 0 - [ Verificar - Plataforma base GO/NO-GO (SP, backend, ACR, KV+MI, secretos, imagen, state) --> \$0 ]"
     echo -e " ${VERDE}2.${NC} Fase 1 - [ Aprovisionar Cluster AKS 'nace completo' (RG, WI, CSI, AGIC + AppGW, fedcred) --> 3 Resources + AcrPull ]"
@@ -554,7 +593,7 @@ opcion4() {
     echo -e "\n${CIAN}[5/5] La app respondiendo (por port-forward, antes del Ingress):${NC}"
     echo "  kubectl -n ${NS_APP} port-forward svc/sri-facturacion-service-svc 5000:5000"
     echo "  curl -s localhost:5000/api/v1/version; echo"
-    echo -e "${MAGENTA}Screenshot para el TFM: árbol de la Application en la UI de ArgoCD (port-forward 127.0.0.1:8082)${NC}"
+    echo -e "${MAGENTA}Screenshot para el TFM: árbol de la Application en la UI de ArgoCD (port-forward 127.0.0.1:8081)${NC}"
     echo -e "${MAGENTA}- se ve el Secret sri-facturacion-db como relación del árbol, junto al Deployment y el HPA.${NC}"
     leer_enter
 }
@@ -751,20 +790,24 @@ opcion6() {
     echo "  hey PID ${hey_pid} -> log: ${hey_log}"
 
     # ---- [4/6] Port-forward de ArgoCD (reutiliza uno existente; libera solo el PID propio al terminar) ----
-    echo -e "\n${CIAN}[4/6] Port-forward de ArgoCD (http://localhost:8080 -> UI para el jurado)${NC}"
-    local pf_existente="" pid8080
-    for pid8080 in $(lsof -ti :8080 2>/dev/null || true); do
-        if ps -p "$pid8080" -o command= 2>/dev/null | grep -q "kubectl.*port-forward.*argocd-server"; then
-            pf_existente="$pid8080"; break
+    # Puerto 8081 DEDICADO del menú Azure: el 8080 es del menú AWS (UI de
+    # ArgoCD en EKS). En demos paralelas, reutilizar el port-forward del
+    # cluster vecino mostraría en el browser el CLUSTER EQUIVOCADO: mismo
+    # principio que el kubeconfig aislado, nada compartido entre nubes.
+    echo -e "\n${CIAN}[4/6] Port-forward de ArgoCD (http://localhost:8081 -> UI para el jurado)${NC}"
+    local pf_existente="" pid8081
+    for pid8081 in $(lsof -ti :8081 2>/dev/null || true); do
+        if ps -p "$pid8081" -o command= 2>/dev/null | grep -q "kubectl.*port-forward.*argocd-server"; then
+            pf_existente="$pid8081"; break
         fi
     done
     local argocd_pid=""
     if [ -n "$pf_existente" ]; then
         echo "  Ya existe un port-forward de ArgoCD (PID ${pf_existente}): se REUTILIZA y queda vivo tras esta fase."
-    elif [ -n "$pid8080" ]; then
-        echo -e "  ${AMARILLO}El puerto 8080 lo ocupa otra aplicación: se OMITE el port-forward.${NC}"
+    elif [ -n "$pid8081" ]; then
+        echo -e "  ${AMARILLO}El puerto 8081 lo ocupa otra aplicación: se OMITE el port-forward.${NC}"
     else
-        kubectl port-forward svc/argocd-server 8080:443 -n argocd &
+        kubectl port-forward svc/argocd-server 8081:443 -n argocd &
         argocd_pid=$!
         echo "  port-forward propio (PID ${argocd_pid}): se libera al terminar esta fase."
         # Solo el PID que esta fase levanta se libera al retornar; el reusado no se toca.

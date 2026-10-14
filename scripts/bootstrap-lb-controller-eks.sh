@@ -30,12 +30,26 @@ SA_NAMESPACE="kube-system"
 echo "== 0. Guards =="
 # Cluster alcanzable (kubeconfig apuntando al cluster correcto)
 CURRENT_CTX=$(kubectl config current-context 2>/dev/null || echo "")
+# Guard multicloud (demos AWS+Azure en paralelo): el contexto activo debe ser
+# el EKS esperado. 'kubectl get nodes' pasa contra CUALQUIER cluster y sin
+# este guard el script anotaria la SA e instalaria el controller en el AKS
+# de la terminal vecina (carrera de contexto de ~/.kube/config).
+case "$CURRENT_CTX" in
+  *"$CLUSTER_NAME"*) echo "Contexto actual: $CURRENT_CTX (cluster EKS esperado)" ;;
+  *)
+    echo "ERROR: el contexto kubectl '$CURRENT_CTX' NO es el cluster esperado ($CLUSTER_NAME)." >&2
+    echo "       Aisla el kubeconfig de esta nube y reconecta antes de relanzar:" >&2
+    echo "         export KUBECONFIG=\"$HOME/.kube/sri-eks-config.yaml\"" >&2
+    echo "         aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME --kubeconfig \"$KUBECONFIG\"" >&2
+    exit 1
+    ;;
+esac
 if ! kubectl get nodes > /dev/null 2>&1; then
   echo "ERROR: no alcanzo el cluster con el contexto actual ($CURRENT_CTX)." >&2
-  echo "       Ejecuta primero: aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME" >&2
+  echo "       Ejecuta primero: export KUBECONFIG=\"$HOME/.kube/sri-eks-config.yaml\"" >&2
+  echo "         aws eks update-kubeconfig --region $REGION --name $CLUSTER_NAME --kubeconfig \"$KUBECONFIG\"" >&2
   exit 1
 fi
-echo "Contexto actual: $CURRENT_CTX"
 
 # helm instalado
 if ! command -v helm > /dev/null 2>&1; then
