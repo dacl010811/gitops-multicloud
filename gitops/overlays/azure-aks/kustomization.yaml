@@ -37,7 +37,7 @@ patches:
   target:
     kind: Deployment
     name: sri-facturacion-service-deployment
-- path: hpa-patch.yaml # Habilitado para demo
+- path: hpa-patch.yaml
   target:
     kind: HorizontalPodAutoscaler
     name: sri-facturacion-service-hpa
