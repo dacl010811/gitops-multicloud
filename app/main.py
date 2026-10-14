@@ -34,7 +34,7 @@ app.add_middleware(
 async def root():
     """Endpoint raíz"""
     return {
-        "message": "SRI Facturación Service API 15.0.0",
+        "message": "SRI Facturación Service  API 15.0.0",
         "version": "15.0.0",
         "status": "running"
     }
