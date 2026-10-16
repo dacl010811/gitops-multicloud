@@ -47,7 +47,7 @@ patches:
 images:
 - name: sri-facturacion-service
   newName: sriacrtfm23c5.azurecr.io/sri-facturacion-service
-  newTag: cd7b590f948416bfb7aec7b550fddf40b51efbf8
+  newTag: 9a547cbb08828f2727f0b2244d17fafc514557c9
 
 commonLabels:
   cloud: azure-aks

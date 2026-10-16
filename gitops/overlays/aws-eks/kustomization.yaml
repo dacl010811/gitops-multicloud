@@ -30,9 +30,9 @@ namespace: sri-facturacion
 # ingress + hpa-patch comentados para el prune — regla de oro FinOps:
 # el Ingress muere ANTES que el cluster (prune ArgoCD -> controller borra ALB).
 # - ingress.yaml
+#- ingress.yaml
 resources:
 - ../../bases
-#- ingress.yaml
 - secrets-store-ssm.yaml
 - serviceaccount.yaml
 
@@ -65,7 +65,7 @@ patches:
 images:
 - name: sri-facturacion-service
   newName: 053044806920.dkr.ecr.us-east-1.amazonaws.com/sri-facturacion-service
-  newTag: cd7b590f948416bfb7aec7b550fddf40b51efbf8
+  newTag: 9a547cbb08828f2727f0b2244d17fafc514557c9
 
 commonLabels:
   cloud: aws-eks
